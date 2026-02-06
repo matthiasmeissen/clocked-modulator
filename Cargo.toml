@@ -1,0 +1,18 @@
+[package]
+name = "clocked-modulator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+defmt = "1.0.1"
+defmt-rtt = "1.1.0"
+embedded-hal = "1.0.0"
+panic-halt = "1.0.0"
+
+rp235x-hal = { version = "0.4.0", features = [
+    "rt",
+    "critical-section-impl",
+    "binary-info",
+] }
