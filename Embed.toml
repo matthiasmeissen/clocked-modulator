@@ -16,3 +16,6 @@ up_mode = "NoBlockSkip"
 timeout = 3000
 log_enabled = false
 log_path = "./logs"
+
+[default.probe]
+protocol = "Swd"

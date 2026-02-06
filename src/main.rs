@@ -6,6 +6,8 @@ use cortex_m::{self, asm};
 use embedded_hal::digital::OutputPin;
 use rp235x_hal as hal;
 use panic_halt as _;
+use defmt_rtt as _;
+use defmt;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
@@ -23,6 +25,8 @@ fn main() -> ! {
         sio.gpio_bank0, 
         &mut pac.RESETS
     );
+
+    defmt::info!("Test");
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
     led_pin.set_high().unwrap();
