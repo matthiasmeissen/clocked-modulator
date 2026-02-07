@@ -6,29 +6,43 @@ use core::cell::RefCell;
 use cortex_m::{self, asm, interrupt::Mutex};
 use embedded_hal::digital::OutputPin;
 use rp235x_hal as hal;
-use hal::timer::Alarm;
+use hal::timer::{Alarm, Instant};
 use hal::pac::interrupt;
 use hal::fugit::MicrosDurationU32;
 use panic_halt as _;
 use defmt_rtt as _;
 use defmt;
 
+mod phasor;
+
 #[unsafe(link_section = ".start_block")]
 #[used]
 pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
-type AlarmType = rp235x_hal::timer::Alarm0<rp235x_hal::timer::CopyableTimer0>;
+// 1kHz = 1000 microseconds
+const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
 
-static SHARED_STATE: Mutex<RefCell<Option<AlarmType>>> = Mutex::new(RefCell::new(None));
+type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
+
+struct SharedState {
+    alarm: AlarmType,
+    next_fire: u64, 
+    phasor_bank: phasor::PhasorBank,
+}
+
+static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
 
 #[interrupt]
 fn TIMER0_IRQ_0() {
     cortex_m::interrupt::free(|cs| {
-        if let Some(alarm0) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-            alarm0.clear_interrupt();
-            defmt::info!("Counter");
+        if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
+            state.alarm.clear_interrupt();
 
-            alarm0.schedule(MicrosDurationU32::millis(500)).unwrap();
+            state.phasor_bank.tick();
+
+            let next = state.next_fire + TICK_INTERVAL.ticks() as u64;
+            state.next_fire = next;
+            let _ = state.alarm.schedule_at(Instant::from_ticks(next));
         }
     })
 }
@@ -54,12 +68,21 @@ fn main() -> ! {
         &mut pac.RESETS, 
         &clocks,
     );
+
     let mut alarm0: AlarmType = timer.alarm_0().unwrap();
-    let _ = alarm0.schedule(MicrosDurationU32::millis(500)).unwrap();
+    let first_fire = timer.get_counter() + TICK_INTERVAL;
+    alarm0.schedule_at(first_fire).unwrap();
     alarm0.enable_interrupt();
 
+    let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
+    let phasor_bank = phasor::PhasorBank::new(120.0, tick_rate_hz);
+
     cortex_m::interrupt::free(|cs| {
-        SHARED_STATE.borrow(cs).replace(Some(alarm0));
+        SHARED_STATE.borrow(cs).replace(Some(SharedState { 
+            alarm: alarm0, 
+            next_fire: first_fire.ticks(),
+            phasor_bank
+        }));
     });
 
     let sio = hal::Sio::new(pac.SIO);
@@ -80,6 +103,11 @@ fn main() -> ! {
     cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
 
     loop {
+        cortex_m::interrupt::free(|cs| {
+            if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
+                defmt::info!("{:?}", state.phasor_bank);
+            }
+        });
         asm::wfi();
     }
 }
