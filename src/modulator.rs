@@ -66,11 +66,10 @@ impl Modulator {
     }
 
     pub fn get_all_outputs(&self) -> [f32; NUM_SLOTS] {
-        [
-            self.slots[0].output(&self.bank),
-            self.slots[1].output(&self.bank),
-            self.slots[2].output(&self.bank),
-            self.slots[3].output(&self.bank),
-        ]
+        let mut outputs = [0.0; NUM_SLOTS];
+        for (i, slot) in self.slots.iter().enumerate() {
+            outputs[i] = slot.output(&self.bank);
+        }
+        outputs
     }
 }

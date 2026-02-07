@@ -27,8 +27,8 @@ type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
 
 struct SharedState {
     alarm: AlarmType,
-    next_fire: u64, 
-    phasor_bank: phasor::PhasorBank,
+    next_fire: u64,
+    modulator: modulator::Modulator,
 }
 
 static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
@@ -39,7 +39,7 @@ fn TIMER0_IRQ_0() {
         if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
             state.alarm.clear_interrupt();
 
-            state.phasor_bank.tick();
+            state.modulator.tick();
 
             let next = state.next_fire + TICK_INTERVAL.ticks() as u64;
             state.next_fire = next;
@@ -76,13 +76,13 @@ fn main() -> ! {
     alarm0.enable_interrupt();
 
     let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
-    let phasor_bank = phasor::PhasorBank::new(120.0, tick_rate_hz);
+    let modulator = modulator::Modulator::new(120.0, tick_rate_hz);
 
     cortex_m::interrupt::free(|cs| {
         SHARED_STATE.borrow(cs).replace(Some(SharedState { 
             alarm: alarm0, 
             next_fire: first_fire.ticks(),
-            phasor_bank
+            modulator,
         }));
     });
 
@@ -106,7 +106,7 @@ fn main() -> ! {
     loop {
         cortex_m::interrupt::free(|cs| {
             if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
-                defmt::info!("{:?}", state.phasor_bank);
+                defmt::info!("{}", state.modulator.get_all_outputs());
             }
         });
         asm::wfi();
