@@ -23,11 +23,20 @@ impl Multiplier {
             Multiplier::X2 => 2.0,
         }
     }
+
+    pub fn index(self) -> usize {
+        match self {
+            Multiplier::D4 => 0,
+            Multiplier::D2 => 1,
+            Multiplier::X1 => 2,
+            Multiplier::X2 => 3,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct PhasorBank {
-    phases: [f32; Multiplier::ALL.len()],
+    pub phases: [f32; Multiplier::ALL.len()],
     tick_rate: f32,
     base_increment: f32,
 }
@@ -43,6 +52,10 @@ impl PhasorBank {
     
     pub fn set_bpm(&mut self, bpm: f32) {
         self.base_increment = bpm / 60.0 / self.tick_rate;
+    }
+
+    pub fn get_phase(&self, mul: Multiplier) -> f32 {
+        self.phases[mul.index()]
     }
     
     pub fn tick(&mut self) {

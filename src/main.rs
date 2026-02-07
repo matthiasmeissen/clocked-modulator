@@ -14,6 +14,7 @@ use defmt_rtt as _;
 use defmt;
 
 mod phasor;
+mod modulator;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
