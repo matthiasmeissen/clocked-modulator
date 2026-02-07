@@ -73,3 +73,29 @@ impl Modulator {
         outputs
     }
 }
+
+
+pub struct Visualizer4(pub [f32; 4]);
+
+impl defmt::Format for Visualizer4 {
+    fn format(&self, f: defmt::Formatter) {
+        for (i, val) in self.0.iter().enumerate() {
+            let clamped = if *val < 0.0 { 0.0 } else if *val > 1.0 { 1.0 } else { *val };
+            let level = (clamped * 8.0) as usize;
+            match level {
+                0 => defmt::write!(f, "{}: ", i),
+                1 => defmt::write!(f, "{}:▂", i),
+                2 => defmt::write!(f, "{}:▃", i),
+                3 => defmt::write!(f, "{}:▄", i),
+                4 => defmt::write!(f, "{}:▅", i),
+                5 => defmt::write!(f, "{}:▆", i),
+                6 => defmt::write!(f, "{}:▇", i),
+                _ => defmt::write!(f, "{}:█", i),
+            }
+
+            if i < 3 {
+                defmt::write!(f, " | ");
+            }
+        }
+    }
+}

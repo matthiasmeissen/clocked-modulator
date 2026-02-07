@@ -104,11 +104,25 @@ fn main() -> ! {
     cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
 
     loop {
-        cortex_m::interrupt::free(|cs| {
+        let snapshot = cortex_m::interrupt::free(|cs| {
             if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
-                defmt::info!("{}", state.modulator.get_all_outputs());
+                // We return the raw [f32; 4] array here
+                Some(state.modulator.get_all_outputs())
+            } else {
+                None
             }
         });
+
+        // 2. Visualize outside the lock
+        if let Some(data) = snapshot {
+            // Throttle: Only print every X loops to make it readable
+            // (You can also use a simple timer/counter here)
+            cortex_m::asm::delay(12_000_000 / 30); // Approx 30 FPS delay
+
+            // Wrap the data in our Visualizer struct and log it
+            defmt::info!("{}", modulator::Visualizer4(data));
+        }
+
         asm::wfi();
     }
 }
