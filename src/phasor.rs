@@ -1,11 +1,33 @@
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Multiplier {
+    D4,     // 4 Beats, One Bar (To complete)
+    D2,     // 2 Beats (To complete)
+    X1,     // 1 Beat (To complete)
+    X2,     // 1/2 Beat (To complete)
+}
+
+impl Multiplier {
+    pub const ALL: [Multiplier; 4] = [
+        Multiplier::D4,
+        Multiplier::D2,
+        Multiplier::X1,
+        Multiplier::X2,
+    ];
+
+    pub fn factor(self) -> f32 {
+        match self {
+            Multiplier::D4 => 0.25,
+            Multiplier::D2 => 0.5,
+            Multiplier::X1 => 1.0,
+            Multiplier::X2 => 2.0,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PhasorBank {
-    phasor_d4: f32,     // Four Bears, One Bar (To complete)
-    phasor_d2: f32,     // Two Beats (To complete)
-    phasor_x1: f32,     // One Beat (To complete)
-    phasor_x2: f32,     // Half Beat (To complete)
-
+    phases: [f32; Multiplier::ALL.len()],
     tick_rate: f32,
     base_increment: f32,
 }
@@ -13,10 +35,7 @@ pub struct PhasorBank {
 impl PhasorBank {
     pub fn new(bpm: f32, tick_rate: f32) -> Self {
         Self { 
-            phasor_d4: 0.0, 
-            phasor_d2: 0.0, 
-            phasor_x1: 0.0, 
-            phasor_x2: 0.0, 
+            phases: [0.0; Multiplier::ALL.len()],
             tick_rate,
             base_increment: bpm / 60.0 / tick_rate,
         }
@@ -27,10 +46,9 @@ impl PhasorBank {
     }
     
     pub fn tick(&mut self) {
-        self.phasor_d4 = (self.phasor_d4 + self.base_increment * 0.25) % 1.0;
-        self.phasor_d2 = (self.phasor_d2 + self.base_increment * 0.5) % 1.0;
-        self.phasor_x1 = (self.phasor_x1 + self.base_increment) % 1.0;
-        self.phasor_x2 = (self.phasor_x2 + self.base_increment * 2.0) % 1.0;
+        for (idx, mul) in Multiplier::ALL.iter().enumerate() {
+            self.phases[idx] = (self.phases[idx] + self.base_increment * mul.factor()) % 1.0;
+        }
     }
 }
 
@@ -48,15 +66,9 @@ fn format_bar(value: f32) -> [u8; BAR_WIDTH] {
 
 impl defmt::Format for PhasorBank {
     fn format(&self, f: defmt::Formatter) {
-        let d4 = format_bar(self.phasor_d4);
-        let d2 = format_bar(self.phasor_d2);
-        let x1 = format_bar(self.phasor_x1);
-        let x2 = format_bar(self.phasor_x2);
-        defmt::write!(f, "Bar: {} | Two Beats: {} | Beat: {} | Half Beat: {}",
-            core::str::from_utf8(&d4).unwrap(),
-            core::str::from_utf8(&d2).unwrap(),
-            core::str::from_utf8(&x1).unwrap(),
-            core::str::from_utf8(&x2).unwrap(),
-        );
+        for (idx, _) in Multiplier::ALL.iter().enumerate() {
+            let bar = format_bar(self.phases[idx]);
+            defmt::write!(f, " {}: {}", idx, core::str::from_utf8(&bar).unwrap());
+        }
     }
 }
