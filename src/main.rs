@@ -13,12 +13,9 @@ use panic_halt as _;
 use defmt_rtt as _;
 use defmt;
 
-use usb_device::class_prelude::*;
-use usb_device::prelude::*;
-use usbd_serial::SerialPort;
-
 mod phasor;
 mod modulator;
+mod usb;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
@@ -105,24 +102,13 @@ fn main() -> ! {
     // let mut led_pin = pins.gpio25.into_push_pull_output();
     // led_pin.set_high().unwrap();
 
-    let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
+    // Initialize USB
+    let (mut serial, mut usb_device) = usb::init_usb( 
         pac.USB, 
         pac.USB_DPRAM, 
-        clocks.usb_clock,
-        true,
-        &mut pac.RESETS,
-    ));
-
-    let mut serial = SerialPort::new(&usb_bus);
-
-    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
-        .strings(&[StringDescriptors::default()
-            .manufacturer("matthiasmeissen")
-            .product("ClockedModulator")
-            .serial_number("RP2350")])
-        .unwrap()
-        .device_class(2)
-        .build();
+        clocks.usb_clock, 
+        &mut pac.RESETS, 
+    );
 
     let mut tx_buffer = [0u8; 2 + (modulator::NUM_MODULATORS * 4)];
     tx_buffer[0] = 0xAA; // Sync Byte 1
