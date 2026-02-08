@@ -41,11 +41,11 @@ impl ModSlot {
 }
 
 
-const NUM_SLOTS: usize = 4;
+pub const NUM_MODULATORS: usize = 4;
 
 pub struct Modulator {
     pub bank: PhasorBank,
-    pub slots: [ModSlot; NUM_SLOTS],
+    pub slots: [ModSlot; NUM_MODULATORS],
 }
 
 impl Modulator {
@@ -65,8 +65,8 @@ impl Modulator {
         self.bank.tick();
     }
 
-    pub fn get_all_outputs(&self) -> [f32; NUM_SLOTS] {
-        let mut outputs = [0.0; NUM_SLOTS];
+    pub fn get_all_outputs(&self) -> [f32; NUM_MODULATORS] {
+        let mut outputs = [0.0; NUM_MODULATORS];
         for (i, slot) in self.slots.iter().enumerate() {
             outputs[i] = slot.output(&self.bank);
         }

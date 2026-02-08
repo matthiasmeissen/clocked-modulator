@@ -13,6 +13,10 @@ use panic_halt as _;
 use defmt_rtt as _;
 use defmt;
 
+use usb_device::class_prelude::*;
+use usb_device::prelude::*;
+use usbd_serial::SerialPort;
+
 mod phasor;
 mod modulator;
 
@@ -86,43 +90,81 @@ fn main() -> ! {
         }));
     });
 
-    let sio = hal::Sio::new(pac.SIO);
-
-    let pins = hal::gpio::Pins::new(
-        pac.IO_BANK0, 
-        pac.PADS_BANK0, 
-        sio.gpio_bank0, 
-        &mut pac.RESETS,
-    );
-
-    defmt::info!("Test");
-
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    led_pin.set_high().unwrap();
-
     unsafe { cortex_m::peripheral::NVIC::unmask(hal::pac::Interrupt::TIMER0_IRQ_0) };
     cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
 
+
+    // GPIO and LED init
+    // let sio = hal::Sio::new(pac.SIO);
+    // let pins = hal::gpio::Pins::new(
+    //     pac.IO_BANK0, 
+    //     pac.PADS_BANK0, 
+    //     sio.gpio_bank0, 
+    //     &mut pac.RESETS,
+    // );
+    // let mut led_pin = pins.gpio25.into_push_pull_output();
+    // led_pin.set_high().unwrap();
+
+    let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
+        pac.USB, 
+        pac.USB_DPRAM, 
+        clocks.usb_clock,
+        true,
+        &mut pac.RESETS,
+    ));
+
+    let mut serial = SerialPort::new(&usb_bus);
+
+    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
+        .strings(&[StringDescriptors::default()
+            .manufacturer("matthiasmeissen")
+            .product("ClockedModulator")
+            .serial_number("RP2350")])
+        .unwrap()
+        .device_class(2)
+        .build();
+
+    let mut tx_buffer = [0u8; 2 + (modulator::NUM_MODULATORS * 4)];
+    tx_buffer[0] = 0xAA; // Sync Byte 1
+    tx_buffer[1] = 0xBB; // Sync Byte 2
+
+
     loop {
+        if usb_device.poll(&mut [&mut serial]) {
+             let mut buf = [0u8; 64];
+             let _ = serial.read(&mut buf);
+        }
+
+        // 2. Logic (Get data from interrupt)
         let snapshot = cortex_m::interrupt::free(|cs| {
             if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
-                // We return the raw [f32; 4] array here
                 Some(state.modulator.get_all_outputs())
             } else {
                 None
             }
         });
 
-        // 2. Visualize outside the lock
-        if let Some(data) = snapshot {
-            // Throttle: Only print every X loops to make it readable
-            // (You can also use a simple timer/counter here)
-            cortex_m::asm::delay(12_000_000 / 30); // Approx 30 FPS delay
+        // 3. Send Data (Throttle this! Don't spam 100% CPU)
+        // A simple delay or counter prevents flooding the serial port
+        cortex_m::asm::delay(12_000_000 / 100); // Wait ~10ms
 
-            // Wrap the data in our Visualizer struct and log it
+        if let Some(data) = snapshot {
+            let mut buf_idx = 2;
+            for val in data.iter() {
+                let bytes = val.to_le_bytes();
+                tx_buffer[buf_idx] = bytes[0];
+                tx_buffer[buf_idx+1] = bytes[1];
+                tx_buffer[buf_idx+2] = bytes[2];
+                tx_buffer[buf_idx+3] = bytes[3];
+                buf_idx += 4;
+            }
+
+            let _ = serial.write(&tx_buffer); 
+            
+            // For visualization in RTT (Optional)
             defmt::info!("{}", modulator::Visualizer4(data));
         }
 
-        asm::wfi();
+        // asm::wfi();
     }
 }
