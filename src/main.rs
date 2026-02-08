@@ -110,11 +110,6 @@ fn main() -> ! {
         &mut pac.RESETS, 
     );
 
-    let mut tx_buffer = [0u8; 2 + (modulator::NUM_MODULATORS * 4)];
-    tx_buffer[0] = 0xAA; // Sync Byte 1
-    tx_buffer[1] = 0xBB; // Sync Byte 2
-
-
     loop {
         if usb_device.poll(&mut [&mut serial]) {
              let mut buf = [0u8; 64];
@@ -122,11 +117,13 @@ fn main() -> ! {
         }
 
         // 2. Logic (Get data from interrupt)
-        let snapshot = cortex_m::interrupt::free(|cs| {
+        let (tx_buffer, snapshot) = cortex_m::interrupt::free(|cs| {
             if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
-                Some(state.modulator.get_all_outputs())
+                let bytes = state.modulator.get_output_as_bytes();
+                let data = state.modulator.get_all_outputs();
+                (Some(bytes), Some(data))
             } else {
-                None
+                (None, None)
             }
         });
 
@@ -134,20 +131,12 @@ fn main() -> ! {
         // A simple delay or counter prevents flooding the serial port
         cortex_m::asm::delay(12_000_000 / 100); // Wait ~10ms
 
-        if let Some(data) = snapshot {
-            let mut buf_idx = 2;
-            for val in data.iter() {
-                let bytes = val.to_le_bytes();
-                tx_buffer[buf_idx] = bytes[0];
-                tx_buffer[buf_idx+1] = bytes[1];
-                tx_buffer[buf_idx+2] = bytes[2];
-                tx_buffer[buf_idx+3] = bytes[3];
-                buf_idx += 4;
-            }
+        if let Some(bytes) = tx_buffer {
+            let _ = serial.write(&bytes);
+        }
 
-            let _ = serial.write(&tx_buffer); 
-            
-            // For visualization in RTT (Optional)
+        // For visualization in RTT (Optional)
+        if let Some(data) = snapshot {
             defmt::info!("{}", modulator::Visualizer4(data));
         }
 

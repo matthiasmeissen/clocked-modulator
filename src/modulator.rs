@@ -72,6 +72,23 @@ impl Modulator {
         }
         outputs
     }
+
+    pub fn get_output_as_bytes(&self) -> [u8; 18] {
+        let outputs = self.get_all_outputs();
+        let mut buffer = [0u8; 18];
+
+        // Sync header (must match TouchDesigner parser)
+        buffer[0] = 0xAA;
+        buffer[1] = 0xBB;
+        
+        // Pack f32 outputs as little-endian bytes
+        for (i, &output) in outputs.iter().enumerate() {
+            let bytes = output.to_le_bytes();
+            buffer[2 + i * 4..6 + i * 4].copy_from_slice(&bytes);
+        }
+        
+        buffer
+    }
 }
 
 
