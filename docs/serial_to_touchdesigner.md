@@ -65,3 +65,27 @@ def onReceive(dat, rowIndex, message, bytes, peer):
             
     return
 ```
+
+## Add CHOP Execute to any value generating CHOP
+
+```
+def onValueChange(channel, sampleIndex, val, prev):
+	import struct
+    
+    # 1. Define the Header for BPM ('B')
+	header = b'B'
+    
+    # 2. Pack the Float value
+    # '<' = Little Endian (Standard for ARM/Pico)
+    # 'f' = float (4 bytes)
+	payload = struct.pack('<f', val)
+    
+    # 3. Combine
+	message = header + payload
+    
+    # 4. Send to Serial DAT
+    # Change 'serial1' to whatever your Serial DAT is named
+	op('serial1').sendBytes(message)
+    
+	return
+```

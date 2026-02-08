@@ -113,7 +113,39 @@ fn main() -> ! {
     loop {
         if usb_device.poll(&mut [&mut serial]) {
              let mut buf = [0u8; 64];
-             let _ = serial.read(&mut buf);
+
+             match serial.read(&mut buf) {
+                Ok(count) if count > 0 => {
+                    // Simple Parser: Check if we have enough bytes for a command
+                    // (Header + 4 bytes float = 5 bytes)
+                    
+                    // Iterate through buffer in case multiple commands arrived or offset
+                    let mut i = 0;
+                    while i + 5 <= count {
+                        // Check for 'B' Header
+                        if buf[i] == b'B' {
+                            // Extract the next 4 bytes
+                            let mut float_bytes = [0u8; 4];
+                            float_bytes.copy_from_slice(&buf[i+1 .. i+5]);
+                            
+                            let new_bpm = f32::from_le_bytes(float_bytes);
+                            
+                            cortex_m::interrupt::free(|cs| {
+                                if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
+                                    state.modulator.bank.set_bpm(new_bpm); 
+                                }
+                            });
+                            
+                            defmt::info!("Set BPM to: {}", new_bpm);
+                            
+                            i += 5;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                _ => {} 
+            }
         }
 
         // 2. Logic (Get data from interrupt)
@@ -128,7 +160,6 @@ fn main() -> ! {
         });
 
         // 3. Send Data (Throttle this! Don't spam 100% CPU)
-        // A simple delay or counter prevents flooding the serial port
         cortex_m::asm::delay(12_000_000 / 100); // Wait ~10ms
 
         if let Some(bytes) = tx_buffer {
