@@ -92,15 +92,15 @@ fn main() -> ! {
 
 
     // GPIO and LED init
-    // let sio = hal::Sio::new(pac.SIO);
-    // let pins = hal::gpio::Pins::new(
-    //     pac.IO_BANK0, 
-    //     pac.PADS_BANK0, 
-    //     sio.gpio_bank0, 
-    //     &mut pac.RESETS,
-    // );
-    // let mut led_pin = pins.gpio25.into_push_pull_output();
-    // led_pin.set_high().unwrap();
+    let sio = hal::Sio::new(pac.SIO);
+    let pins = hal::gpio::Pins::new(
+        pac.IO_BANK0, 
+        pac.PADS_BANK0, 
+        sio.gpio_bank0, 
+        &mut pac.RESETS,
+    );
+    let mut led_pin = pins.gpio25.into_push_pull_output();
+    led_pin.set_high().unwrap();
 
     // Initialize USB
     let (mut serial, mut usb_device) = usb::init_usb( 
@@ -114,37 +114,33 @@ fn main() -> ! {
         if usb_device.poll(&mut [&mut serial]) {
              let mut buf = [0u8; 64];
 
-             match serial.read(&mut buf) {
-                Ok(count) if count > 0 => {
-                    // Simple Parser: Check if we have enough bytes for a command
-                    // (Header + 4 bytes float = 5 bytes)
-                    
-                    // Iterate through buffer in case multiple commands arrived or offset
-                    let mut i = 0;
-                    while i + 5 <= count {
-                        // Check for 'B' Header
-                        if buf[i] == b'B' {
-                            // Extract the next 4 bytes
-                            let mut float_bytes = [0u8; 4];
-                            float_bytes.copy_from_slice(&buf[i+1 .. i+5]);
-                            
-                            let new_bpm = f32::from_le_bytes(float_bytes);
-                            
-                            cortex_m::interrupt::free(|cs| {
-                                if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                                    state.modulator.bank.set_bpm(new_bpm); 
-                                }
-                            });
-                            
-                            defmt::info!("Set BPM to: {}", new_bpm);
-                            
-                            i += 5;
-                        } else {
-                            i += 1;
-                        }
+             if let Ok(count) = serial.read(&mut buf) {
+                let mut i = 0;
+                // Keep looping while we have at least 5 bytes remaining (1 Header + 4 Float)
+                while i + 5 <= count {
+                    // Check for the 'B' Header
+                    if buf[i] == b'B' {                        
+                        // 1. Grab the 4 bytes representing the float
+                        let bytes = [buf[i+1], buf[i+2], buf[i+3], buf[i+4]];
+                        // 2. Convert bytes to float (Standard Rust function)
+                        let bpm = f32::from_le_bytes(bytes);
+                        
+                        cortex_m::interrupt::free(|cs| {
+                            if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
+                                state.modulator.bank.set_bpm(bpm);
+                            }
+                        });
+                        
+                        defmt::info!("Received BPM: {}", bpm);
+
+                        // 4. Important: Jump forward 5 bytes so we don't read the same data again
+                        i += 5;
+                        
+                    } else {
+                        // If it wasn't 'B', move 1 byte forward and try again
+                        i += 1;
                     }
                 }
-                _ => {} 
             }
         }
 
@@ -168,7 +164,12 @@ fn main() -> ! {
 
         // For visualization in RTT (Optional)
         if let Some(data) = snapshot {
-            defmt::info!("{}", modulator::Visualizer4(data));
+            if data[3] > 0.5 {
+                led_pin.set_high().unwrap();
+            } else {
+                led_pin.set_low().unwrap();
+            }
+            //defmt::info!("{}", modulator::Visualizer4(data));
         }
 
         // asm::wfi();
