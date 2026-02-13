@@ -13,31 +13,23 @@ use panic_halt as _;
 use defmt_rtt as _;
 use defmt;
 
+use crate::board::Board;
+
 mod phasor;
 mod modulator;
+mod board;
 mod usb;
 mod display;
-
-
-use embedded_graphics::Drawable;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
-use embedded_graphics::text::Text;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
-use sh1106::{prelude::*, Builder};
-use hal::gpio::{FunctionI2C, Pin, PullDown, bank0};
-use hal::fugit::RateExtU32;
-use hal::clocks::SystemClock;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
 pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 // 1kHz = 1000 microseconds
-const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
+pub const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
 
-type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
+pub type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
+pub type I2CType = rp235x_hal::I2C<rp235x_hal::pac::I2C0, (rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio16, rp235x_hal::gpio::FunctionI2c, rp235x_hal::gpio::PullUp>, rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio17, rp235x_hal::gpio::FunctionI2c, rp235x_hal::gpio::PullUp>)>;
 
 struct SharedState {
     alarm: AlarmType,
@@ -64,37 +56,19 @@ fn TIMER0_IRQ_0() {
 
 #[hal::entry]
 fn main() -> ! {
-    let mut pac = hal::pac::Peripherals::take().unwrap();
-
-    // Initialize Clocks
-    let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
-    let clocks = hal::clocks::init_clocks_and_plls(
-        12_000_000u32, 
-        pac.XOSC, 
-        pac.CLOCKS, 
-        pac.PLL_SYS, 
-        pac.PLL_USB, 
-        &mut pac.RESETS, 
-        &mut watchdog,
-    ).unwrap();
-
-    let mut timer = hal::Timer::new_timer0(
-        pac.TIMER0, 
-        &mut pac.RESETS, 
-        &clocks,
-    );
-
-    let mut alarm0: AlarmType = timer.alarm_0().unwrap();
-    let first_fire = timer.get_counter() + TICK_INTERVAL;
-    alarm0.schedule_at(first_fire).unwrap();
-    alarm0.enable_interrupt();
+    let mut board = Board::init();
 
     let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
     let modulator = modulator::Modulator::new(120.0, tick_rate_hz);
 
+    let mut alarm: crate::AlarmType = board.timer.alarm_0().unwrap();
+    let first_fire: rp235x_hal::fugit::Instant<u64, 1, 1000000> = board.timer.get_counter() + crate::TICK_INTERVAL;
+    alarm.schedule_at(first_fire).unwrap();
+    alarm.enable_interrupt();
+
     cortex_m::interrupt::free(|cs| {
         SHARED_STATE.borrow(cs).replace(Some(SharedState { 
-            alarm: alarm0, 
+            alarm: alarm, 
             next_fire: first_fire.ticks(),
             modulator,
         }));
@@ -103,40 +77,17 @@ fn main() -> ! {
     unsafe { cortex_m::peripheral::NVIC::unmask(hal::pac::Interrupt::TIMER0_IRQ_0) };
     cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
 
+    display::init(board.i2c);
 
-    // GPIO and LED init
-    let sio = hal::Sio::new(pac.SIO);
-    let pins = hal::gpio::Pins::new(
-        pac.IO_BANK0, 
-        pac.PADS_BANK0, 
-        sio.gpio_bank0, 
-        &mut pac.RESETS,
-    );
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    led_pin.set_high().unwrap();
-
-    // Initialize USB
-    let (mut serial, mut usb_device) = usb::init_usb(
-        pac.USB,
-        pac.USB_DPRAM,
-        clocks.usb_clock,
-        &mut pac.RESETS,
-    );
-
-    display::init(
-        pins.gpio16.reconfigure(), 
-        pins.gpio17.reconfigure(), 
-        pac.I2C0, 
-        &mut pac.RESETS, 
-        clocks.system_clock,
-    );
+    //let mut led_pin = pins.gpio25.into_push_pull_output();
+    //led_pin.set_high().unwrap();
 
     loop {
         // USB poll data
-        if usb_device.poll(&mut [&mut serial]) {
+        if board.usb_device.poll(&mut [&mut board.serial]) {
              let mut buf = [0u8; 64];
 
-             if let Ok(count) = serial.read(&mut buf) {
+             if let Ok(count) = board.serial.read(&mut buf) {
                 let mut i = 0;
                 // Keep looping while we have at least 5 bytes remaining (1 Header + 4 Float)
                 while i + 5 <= count {
@@ -180,16 +131,16 @@ fn main() -> ! {
         // Send data bytes over USB with delay
         cortex_m::asm::delay(12_000_000 / 100);
         if let Some(bytes) = tx_buffer {
-            let _ = serial.write(&bytes);
+            let _ = board.serial.write(&bytes);
         }
 
         // Toggle led based on data and log values to rtt
         if let Some(data) = snapshot {
-            if data[3] > 0.5 {
-                led_pin.set_high().unwrap();
-            } else {
-                led_pin.set_low().unwrap();
-            }
+            // if data[3] > 0.5 {
+            //     led_pin.set_high().unwrap();
+            // } else {
+            //     led_pin.set_low().unwrap();
+            // }
             defmt::info!("{}", modulator::Visualizer4(data));
         }
 
