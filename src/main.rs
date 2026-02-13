@@ -18,7 +18,6 @@ use crate::board::Board;
 mod phasor;
 mod modulator;
 mod board;
-mod usb;
 mod display;
 
 #[unsafe(link_section = ".start_block")]
@@ -29,7 +28,6 @@ pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 pub const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
 
 pub type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
-pub type I2CType = rp235x_hal::I2C<rp235x_hal::pac::I2C0, (rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio16, rp235x_hal::gpio::FunctionI2c, rp235x_hal::gpio::PullUp>, rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio17, rp235x_hal::gpio::FunctionI2c, rp235x_hal::gpio::PullUp>)>;
 
 struct SharedState {
     alarm: AlarmType,

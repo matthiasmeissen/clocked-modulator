@@ -9,7 +9,7 @@ use embedded_graphics::{
 
 use sh1106::{prelude::*, Builder};
 
-pub fn init(i2c: crate::I2CType) {
+pub fn init(i2c: crate::board::I2CType) {
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
 
     display.init().unwrap();
