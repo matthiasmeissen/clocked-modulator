@@ -66,7 +66,7 @@ fn main() -> ! {
 
     cortex_m::interrupt::free(|cs| {
         SHARED_STATE.borrow(cs).replace(Some(SharedState { 
-            alarm: alarm, 
+            alarm, 
             next_fire: first_fire.ticks(),
             modulator,
         }));
@@ -98,7 +98,7 @@ fn main() -> ! {
                         
                         cortex_m::interrupt::free(|cs| {
                             if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                                state.modulator.bank.set_bpm(bpm);
+                                state.modulator.set_bpm(bpm);
                             }
                         });
                         

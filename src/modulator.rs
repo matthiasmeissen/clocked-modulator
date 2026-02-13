@@ -42,10 +42,11 @@ impl ModSlot {
 
 
 pub const NUM_MODULATORS: usize = 4;
+const OUTPUT_BUFFER_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
 pub struct Modulator {
-    pub bank: PhasorBank,
-    pub slots: [ModSlot; NUM_MODULATORS],
+    bank: PhasorBank,
+    slots: [ModSlot; NUM_MODULATORS],
 }
 
 impl Modulator {
@@ -65,6 +66,10 @@ impl Modulator {
         self.bank.tick();
     }
 
+    pub fn set_bpm(&mut self, bpm: f32) {
+        self.bank.set_bpm(bpm);
+    }
+
     pub fn get_all_outputs(&self) -> [f32; NUM_MODULATORS] {
         let mut outputs = [0.0; NUM_MODULATORS];
         for (i, slot) in self.slots.iter().enumerate() {
@@ -73,9 +78,9 @@ impl Modulator {
         outputs
     }
 
-    pub fn get_output_as_bytes(&self) -> [u8; 18] {
+    pub fn get_output_as_bytes(&self) -> [u8; OUTPUT_BUFFER_SIZE] {
         let outputs = self.get_all_outputs();
-        let mut buffer = [0u8; 18];
+        let mut buffer = [0u8; OUTPUT_BUFFER_SIZE];
 
         // Sync header (must match TouchDesigner parser)
         buffer[0] = 0xAA;

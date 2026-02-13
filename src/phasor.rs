@@ -25,12 +25,7 @@ impl Multiplier {
     }
 
     pub fn index(self) -> usize {
-        match self {
-            Multiplier::D4 => 0,
-            Multiplier::D2 => 1,
-            Multiplier::X1 => 2,
-            Multiplier::X2 => 3,
-        }
+        Self::ALL.iter().position(|&m| m == self).unwrap()
     }
 }
 
@@ -61,27 +56,6 @@ impl PhasorBank {
     pub fn tick(&mut self) {
         for (idx, mul) in Multiplier::ALL.iter().enumerate() {
             self.phases[idx] = (self.phases[idx] + self.base_increment * mul.factor()) % 1.0;
-        }
-    }
-}
-
-// Custom Formatting of Phasor Values
-const BAR_WIDTH: usize = 32;
-
-fn format_bar(value: f32) -> [u8; BAR_WIDTH] {
-    let filled = (value * BAR_WIDTH as f32) as usize;
-    let mut bar = [b'_'; BAR_WIDTH];
-    for b in bar.iter_mut().take(filled.min(BAR_WIDTH)) {
-        *b = b'#';
-    }
-    bar
-}
-
-impl defmt::Format for PhasorBank {
-    fn format(&self, f: defmt::Formatter) {
-        for (idx, _) in Multiplier::ALL.iter().enumerate() {
-            let bar = format_bar(self.phases[idx]);
-            defmt::write!(f, " {}: {}", idx, core::str::from_utf8(&bar).unwrap());
         }
     }
 }

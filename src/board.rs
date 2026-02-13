@@ -1,8 +1,6 @@
 
 use rp235x_hal as hal;
 use hal::fugit::RateExtU32;
-use panic_halt as _;
-use defmt_rtt as _;
 use hal::usb::UsbBus;
 use usb_device::prelude::*;
 use usbd_serial::SerialPort;
