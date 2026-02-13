@@ -11,10 +11,11 @@ use crate::usb;
 
 pub struct Board {
     pub timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0>,
-    //pub pins: rp235x_hal::gpio::Pins,
     pub serial: SerialPort<'static, UsbBus>,
     pub usb_device: UsbDevice<'static, UsbBus>,
     pub i2c: crate::I2CType,
+
+    pub led_pin: rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio25, rp235x_hal::gpio::FunctionSio<rp235x_hal::gpio::SioOutput>, rp235x_hal::gpio::PullDown>,
 }
 
 impl Board {
@@ -40,7 +41,7 @@ impl Board {
             &clocks,
         );
 
-        // GPIO and LED init
+        // Initialize Pins
         let sio = hal::Sio::new(pac.SIO);
         let pins: rp235x_hal::gpio::Pins = hal::gpio::Pins::new(
             pac.IO_BANK0, 
@@ -48,6 +49,9 @@ impl Board {
             sio.gpio_bank0, 
             &mut pac.RESETS,
         );
+
+        // Initialize LED pins
+        let led_pin: rp235x_hal::gpio::Pin<rp235x_hal::gpio::bank0::Gpio25, rp235x_hal::gpio::FunctionSio<rp235x_hal::gpio::SioOutput>, rp235x_hal::gpio::PullDown> = pins.gpio25.into_push_pull_output();
 
         // Initialize USB
         let (serial, usb_device) = usb::init_usb(
@@ -72,10 +76,10 @@ impl Board {
 
         Self { 
             timer, 
-            //pins, 
             serial, 
             usb_device,
             i2c,
+            led_pin
         }
     }
 }

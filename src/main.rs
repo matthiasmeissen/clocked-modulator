@@ -79,8 +79,8 @@ fn main() -> ! {
 
     display::init(board.i2c);
 
-    //let mut led_pin = pins.gpio25.into_push_pull_output();
-    //led_pin.set_high().unwrap();
+    let mut led_pin = board.led_pin;
+    led_pin.set_high().unwrap();
 
     loop {
         // USB poll data
@@ -136,11 +136,11 @@ fn main() -> ! {
 
         // Toggle led based on data and log values to rtt
         if let Some(data) = snapshot {
-            // if data[3] > 0.5 {
-            //     led_pin.set_high().unwrap();
-            // } else {
-            //     led_pin.set_low().unwrap();
-            // }
+            if data[3] > 0.5 {
+                led_pin.set_high().unwrap();
+            } else {
+                led_pin.set_low().unwrap();
+            }
             defmt::info!("{}", modulator::Visualizer4(data));
         }
 

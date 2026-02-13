@@ -20,7 +20,7 @@ pub fn init(i2c: crate::I2CType) {
         .text_color(BinaryColor::On)
         .build();
 
-    Text::new("Test 20", Point::new(20, 20), text_style)
+    Text::new("Test", Point::new(20, 20), text_style)
         .draw(&mut display)
         .unwrap();
 
