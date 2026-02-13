@@ -123,34 +123,13 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // Display
-    let sda_pin: Pin<_, FunctionI2C, _> = pins.gpio16.reconfigure();
-    let scl_pin: Pin<_, FunctionI2C, _> = pins.gpio17.reconfigure();
-
-    let i2c = hal::I2C::i2c0(
-        pac.I2C0,
-        sda_pin,
-        scl_pin,
-        400.kHz(),
-        &mut pac.RESETS,
-        &clocks.system_clock,
+    display::init(
+        pins.gpio16.reconfigure(), 
+        pins.gpio17.reconfigure(), 
+        pac.I2C0, 
+        &mut pac.RESETS, 
+        clocks.system_clock,
     );
-
-    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
-
-    display.init().unwrap();
-    display.flush().unwrap();
-
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
-
-    Text::new("Test", Point::new(20, 20), text_style)
-        .draw(&mut display)
-        .unwrap();
-
-    display.flush().unwrap();
 
     loop {
         // USB poll data

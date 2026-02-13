@@ -1,27 +1,31 @@
-use embedded_graphics::Drawable;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
-use embedded_graphics::text::Text;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
-use sh1106::{prelude::*, Builder};
-use rp235x_hal as hal;
-use hal::gpio::{FunctionI2C, Pin, PullDown, bank0};
-use hal::fugit::RateExtU32;
-use hal::clocks::SystemClock;
+use embedded_graphics::{
+    Drawable,
+    mono_font::MonoTextStyleBuilder,
+    pixelcolor::BinaryColor,
+    prelude::Point,
+    text::Text,
+    mono_font::ascii::FONT_6X10,
+};
 
-pub fn init(
-    sda_pin: Pin<bank0::Gpio18, FunctionI2C, PullDown>,
-    scl_pin: Pin<bank0::Gpio19, FunctionI2C, PullDown>,
-    i2c1: hal::pac::I2C1,
-    resets: &mut hal::pac::RESETS,
-    system_clock: SystemClock
-) {
+use sh1106::{prelude::*, Builder};
+
+use rp235x_hal as hal;
+use hal::{
+    gpio::{FunctionI2C, Pin, PullDown, bank0},
+    fugit::RateExtU32,
+    clocks::SystemClock,
+    pac,
+};
+
+type pin16 = Pin<bank0::Gpio16, FunctionI2C, PullDown>;
+type pin17 = Pin<bank0::Gpio17, FunctionI2C, PullDown>;
+
+pub fn init(sda_pin: pin16, scl_pin: pin17, i2c0: pac::I2C0, resets: &mut pac::RESETS, system_clock: SystemClock) {
     let sda_pin = sda_pin.reconfigure();
     let scl_pin = scl_pin.reconfigure();
 
-    let i2c = hal::I2C::i2c1(
-        i2c1,
+    let i2c = hal::I2C::i2c0(
+        i2c0,
         sda_pin,
         scl_pin,
         400.kHz(),
