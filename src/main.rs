@@ -32,7 +32,7 @@ pub type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
 struct SharedState {
     alarm: AlarmType,
     next_fire: u64,
-    modulator: modulator::Modulator,
+    phasor: phasor::PhasorBank,
 }
 
 static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
@@ -43,7 +43,7 @@ fn TIMER0_IRQ_0() {
         if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
             state.alarm.clear_interrupt();
 
-            state.modulator.tick();
+            state.phasor.tick();
 
             let next = state.next_fire + TICK_INTERVAL.ticks() as u64;
             state.next_fire = next;
@@ -57,7 +57,9 @@ fn main() -> ! {
     let mut board = Board::init();
 
     let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
-    let modulator = modulator::Modulator::new(120.0, tick_rate_hz);
+
+    let phasor = phasor::PhasorBank::new(120.0, tick_rate_hz);
+    let modulator = modulator::Modulator::new();
 
     let mut alarm: crate::AlarmType = board.timer.alarm_0().unwrap();
     let first_fire: rp235x_hal::fugit::Instant<u64, 1, 1000000> = board.timer.get_counter() + crate::TICK_INTERVAL;
@@ -68,7 +70,7 @@ fn main() -> ! {
         SHARED_STATE.borrow(cs).replace(Some(SharedState { 
             alarm, 
             next_fire: first_fire.ticks(),
-            modulator,
+            phasor,
         }));
     });
 
@@ -98,7 +100,7 @@ fn main() -> ! {
                         
                         cortex_m::interrupt::free(|cs| {
                             if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                                state.modulator.set_bpm(bpm);
+                                state.phasor.set_bpm(bpm);
                             }
                         });
                         
@@ -115,25 +117,20 @@ fn main() -> ! {
             }
         }
 
-        // Get shared data and store as bytes and floats
-        let (tx_buffer, snapshot) = cortex_m::interrupt::free(|cs| {
-            if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
-                let bytes = state.modulator.get_output_as_bytes();
-                let data = state.modulator.get_all_outputs();
-                (Some(bytes), Some(data))
-            } else {
-                (None, None)
-            }
+        // Copy phases out of the critical section
+        let phases = cortex_m::interrupt::free(|cs| {
+            SHARED_STATE.borrow(cs).borrow().as_ref()
+                .map(|s| s.phasor.phases)
         });
 
-        // Send data bytes over USB with delay
-        cortex_m::asm::delay(12_000_000 / 100);
-        if let Some(bytes) = tx_buffer {
-            let _ = board.serial.write(&bytes);
-        }
+        if let Some(phases) = phases {
+            let data = modulator.compute_values(&phases);
+            let tx_buffer = modulator.get_values_as_bytes(&phases);
 
-        // Toggle led based on data and log values to rtt
-        if let Some(data) = snapshot {
+            // Send data bytes over USB with delay
+            cortex_m::asm::delay(12_000_000 / 100);
+            let _ = board.serial.write(&tx_buffer);
+
             if data[3] > 0.5 {
                 led_pin.set_high().unwrap();
             } else {

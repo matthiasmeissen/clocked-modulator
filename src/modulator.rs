@@ -1,7 +1,7 @@
 
 use core::f32::consts::TAU;
 use libm::sinf;
-use crate::phasor::{Multiplier, PhasorBank};
+use crate::phasor::Multiplier;
 
 #[derive(Clone, Copy)]
 pub enum Waveshape {
@@ -34,9 +34,8 @@ impl ModSlot {
         Self { mul, wave }
     }
 
-    pub fn output(&self, bank: &PhasorBank) -> f32 {
-        let phase_value = bank.get_phase(self.mul);
-        self.wave.compute_from_phasor(phase_value)
+    pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
+        self.wave.compute_from_phasor(phases[self.mul.index()])
     }
 }
 
@@ -45,53 +44,43 @@ pub const NUM_MODULATORS: usize = 4;
 const OUTPUT_BUFFER_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
 pub struct Modulator {
-    bank: PhasorBank,
     slots: [ModSlot; NUM_MODULATORS],
 }
 
 impl Modulator {
-    pub fn new(bpm: f32, tick_rate: f32) -> Self {
-        Self { 
-            bank: PhasorBank::new(bpm, tick_rate), 
+    pub fn new() -> Self {
+        Self {
             slots: [
                 ModSlot::new(Multiplier::D4, Waveshape::Sin),
                 ModSlot::new(Multiplier::D2, Waveshape::Tri),
                 ModSlot::new(Multiplier::X1, Waveshape::Saw),
                 ModSlot::new(Multiplier::X2, Waveshape::Squ),
             ]
-        }   
+        }
     }
 
-    pub fn tick(&mut self) {
-        self.bank.tick();
-    }
-
-    pub fn set_bpm(&mut self, bpm: f32) {
-        self.bank.set_bpm(bpm);
-    }
-
-    pub fn get_all_outputs(&self) -> [f32; NUM_MODULATORS] {
+    pub fn compute_values(&self, phases: &[f32; Multiplier::ALL.len()]) -> [f32; NUM_MODULATORS] {
         let mut outputs = [0.0; NUM_MODULATORS];
         for (i, slot) in self.slots.iter().enumerate() {
-            outputs[i] = slot.output(&self.bank);
+            outputs[i] = slot.output(phases);
         }
         outputs
     }
 
-    pub fn get_output_as_bytes(&self) -> [u8; OUTPUT_BUFFER_SIZE] {
-        let outputs = self.get_all_outputs();
+    pub fn get_values_as_bytes(&self, phases: &[f32; Multiplier::ALL.len()]) -> [u8; OUTPUT_BUFFER_SIZE] {
+        let outputs = self.compute_values(phases);
         let mut buffer = [0u8; OUTPUT_BUFFER_SIZE];
 
         // Sync header (must match TouchDesigner parser)
         buffer[0] = 0xAA;
         buffer[1] = 0xBB;
-        
+
         // Pack f32 outputs as little-endian bytes
         for (i, &output) in outputs.iter().enumerate() {
             let bytes = output.to_le_bytes();
             buffer[2 + i * 4..6 + i * 4].copy_from_slice(&bytes);
         }
-        
+
         buffer
     }
 }
