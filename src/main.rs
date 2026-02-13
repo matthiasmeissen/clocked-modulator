@@ -16,6 +16,19 @@ use defmt;
 mod phasor;
 mod modulator;
 mod usb;
+mod display;
+
+
+use embedded_graphics::Drawable;
+use embedded_graphics::mono_font::MonoTextStyleBuilder;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::Point;
+use embedded_graphics::text::Text;
+use embedded_graphics::mono_font::ascii::FONT_6X10;
+use sh1106::{prelude::*, Builder};
+use hal::gpio::{FunctionI2C, Pin, PullDown, bank0};
+use hal::fugit::RateExtU32;
+use hal::clocks::SystemClock;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
@@ -103,14 +116,44 @@ fn main() -> ! {
     led_pin.set_high().unwrap();
 
     // Initialize USB
-    let (mut serial, mut usb_device) = usb::init_usb( 
-        pac.USB, 
-        pac.USB_DPRAM, 
-        clocks.usb_clock, 
-        &mut pac.RESETS, 
+    let (mut serial, mut usb_device) = usb::init_usb(
+        pac.USB,
+        pac.USB_DPRAM,
+        clocks.usb_clock,
+        &mut pac.RESETS,
     );
 
+    // Display
+    let sda_pin: Pin<_, FunctionI2C, _> = pins.gpio16.reconfigure();
+    let scl_pin: Pin<_, FunctionI2C, _> = pins.gpio17.reconfigure();
+
+    let i2c = hal::I2C::i2c0(
+        pac.I2C0,
+        sda_pin,
+        scl_pin,
+        400.kHz(),
+        &mut pac.RESETS,
+        &clocks.system_clock,
+    );
+
+    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
+
+    display.init().unwrap();
+    display.flush().unwrap();
+
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_6X10)
+        .text_color(BinaryColor::On)
+        .build();
+
+    Text::new("Test", Point::new(20, 20), text_style)
+        .draw(&mut display)
+        .unwrap();
+
+    display.flush().unwrap();
+
     loop {
+        // USB poll data
         if usb_device.poll(&mut [&mut serial]) {
              let mut buf = [0u8; 64];
 
@@ -144,7 +187,7 @@ fn main() -> ! {
             }
         }
 
-        // 2. Logic (Get data from interrupt)
+        // Get shared data and store as bytes and floats
         let (tx_buffer, snapshot) = cortex_m::interrupt::free(|cs| {
             if let Some(state) = SHARED_STATE.borrow(cs).borrow().as_ref() {
                 let bytes = state.modulator.get_output_as_bytes();
@@ -155,21 +198,20 @@ fn main() -> ! {
             }
         });
 
-        // 3. Send Data (Throttle this! Don't spam 100% CPU)
-        cortex_m::asm::delay(12_000_000 / 100); // Wait ~10ms
-
+        // Send data bytes over USB with delay
+        cortex_m::asm::delay(12_000_000 / 100);
         if let Some(bytes) = tx_buffer {
             let _ = serial.write(&bytes);
         }
 
-        // For visualization in RTT (Optional)
+        // Toggle led based on data and log values to rtt
         if let Some(data) = snapshot {
             if data[3] > 0.5 {
                 led_pin.set_high().unwrap();
             } else {
                 led_pin.set_low().unwrap();
             }
-            //defmt::info!("{}", modulator::Visualizer4(data));
+            defmt::info!("{}", modulator::Visualizer4(data));
         }
 
         // asm::wfi();

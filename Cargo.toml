@@ -8,6 +8,7 @@ cortex-m = "0.7.7"
 cortex-m-rt = "0.7.5"
 defmt = "1.0.1"
 defmt-rtt = "1.1.0"
+embedded-graphics = "0.8.1"
 embedded-hal = "1.0.0"
 libm = "0.2.16"
 panic-halt = "1.0.0"
@@ -17,6 +18,7 @@ rp235x-hal = { version = "0.4.0", features = [
     "critical-section-impl",
     "binary-info",
 ] }
+sh1106 = "0.5.0"
 static_cell = "2.1.1"
 usb-device = "0.3.2"
 usbd-serial = "0.2.2"
