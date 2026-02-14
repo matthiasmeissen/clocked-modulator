@@ -1,3 +1,6 @@
+
+use core::fmt::Write;
+use heapless::String;
 use embedded_graphics::{
     Drawable, mono_font::{MonoTextStyleBuilder, ascii::FONT_6X10}, pixelcolor::BinaryColor, prelude::{DrawTarget, Point, Primitive, Size}, primitives::{PrimitiveStyle, Rectangle}, text::Text
 };
@@ -26,15 +29,30 @@ pub fn init(i2c: crate::board::I2CType) -> Display {
     display
 }
 
-pub fn draw_screen(display: &mut Display, values: [f32; 4]) {
+pub fn draw_screen(display: &mut Display, values: [f32; 4], bpm: f32) {
     display.clear();
 
-    draw_bar(display, values[0], 5);
-    draw_bar(display, values[1], 15);
-    draw_bar(display, values[2], 25);
-    draw_bar(display, values[3], 35);
+    draw_bpm(display, bpm);
+
+    draw_bar(display, values[0], 25);
+    draw_bar(display, values[1], 35);
+    draw_bar(display, values[2], 45);
+    draw_bar(display, values[3], 55);
 
     let _ = display.flush();
+}
+
+pub fn draw_bpm(display: &mut Display, value: f32) {
+    let mut buf: String<16> = String::new();
+    write!(buf, "{:.0}", value).unwrap();
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_6X10)
+        .text_color(BinaryColor::On)
+        .build();
+
+    Text::new(&buf, Point::new(0, 20), text_style)
+        .draw(display)
+        .unwrap();
 }
 
 pub fn draw_bar(display: &mut Display, value: f32, pos_y: i32) {

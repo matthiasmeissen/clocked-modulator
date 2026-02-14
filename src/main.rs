@@ -4,10 +4,6 @@
 
 use core::cell::RefCell;
 use cortex_m::{self, asm, interrupt::Mutex};
-use embedded_graphics::Drawable;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Primitive, Size};
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_hal::digital::OutputPin;
 use rp235x_hal as hal;
 use hal::timer::{Alarm, Instant};
@@ -92,6 +88,7 @@ fn main() -> ! {
     loop {
         // USB poll data
         let mut new_bpm = None;
+        let mut current_bpm = 120.0;
 
         if board.usb_device.poll(&mut [&mut board.serial]) {
              let mut buf = [0u8; 64];
@@ -122,6 +119,7 @@ fn main() -> ! {
             cortex_m::interrupt::free(|cs| {
                 if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
                     state.phasor.set_bpm(bpm);
+                    current_bpm = bpm;
                 }
             });
             
@@ -138,7 +136,7 @@ fn main() -> ! {
         let values = mod_engine.compute(phasor, &config);
         let tx_buffer = mod_engine.compute_bytes(phasor, &config);
 
-        display::draw_screen(&mut display, values);
+        display::draw_screen(&mut display, values, current_bpm);
 
         // Send data bytes over USB with delay
         cortex_m::asm::delay(12_000_000 / 100);
