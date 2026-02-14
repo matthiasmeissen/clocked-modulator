@@ -1,7 +1,7 @@
 
 use core::f32::consts::TAU;
 use libm::sinf;
-use crate::phasor::Multiplier;
+use crate::phasor::{Multiplier, PhasorBank};
 
 #[derive(Clone, Copy)]
 pub enum Waveshape {
@@ -23,7 +23,7 @@ impl Waveshape {
     }
 }
 
-
+#[derive(Clone, Copy)]
 pub struct ModSlot {
     mul: Multiplier,
     wave: Waveshape,
@@ -43,12 +43,13 @@ impl ModSlot {
 pub const NUM_MODULATORS: usize = 4;
 const OUTPUT_BUFFER_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
-pub struct Modulator {
-    slots: [ModSlot; NUM_MODULATORS],
+#[derive(Clone, Copy)]
+pub struct ModulatorConfig {
+    pub slots: [ModSlot; NUM_MODULATORS],
 }
 
-impl Modulator {
-    pub fn new() -> Self {
+impl Default for ModulatorConfig {
+    fn default() -> Self {
         Self {
             slots: [
                 ModSlot::new(Multiplier::D4, Waveshape::Sin),
@@ -58,17 +59,23 @@ impl Modulator {
             ]
         }
     }
+}
 
-    pub fn compute_values(&self, phases: &[f32; Multiplier::ALL.len()]) -> [f32; NUM_MODULATORS] {
-        let mut outputs = [0.0; NUM_MODULATORS];
-        for (i, slot) in self.slots.iter().enumerate() {
-            outputs[i] = slot.output(phases);
+pub struct ModulatorEngine;
+
+impl ModulatorEngine {
+    pub fn compute(&self, phasor: PhasorBank, config: &ModulatorConfig) -> [f32; NUM_MODULATORS] {
+        let mut values = [0.0; NUM_MODULATORS];
+
+        for (i, slot) in config.slots.iter().enumerate() {
+            values[i] = slot.output(&phasor.phases)
         }
-        outputs
+
+        values
     }
 
-    pub fn get_values_as_bytes(&self, phases: &[f32; Multiplier::ALL.len()]) -> [u8; OUTPUT_BUFFER_SIZE] {
-        let outputs = self.compute_values(phases);
+    pub fn compute_bytes(&self, phasor: PhasorBank, config: &ModulatorConfig) -> [u8; OUTPUT_BUFFER_SIZE] {
+        let outputs = self.compute( phasor, config );
         let mut buffer = [0u8; OUTPUT_BUFFER_SIZE];
 
         // Sync header (must match TouchDesigner parser)
@@ -86,7 +93,7 @@ impl Modulator {
 }
 
 
-pub struct Visualizer4(pub [f32; 4]);
+pub struct Visualizer4(pub [f32; NUM_MODULATORS]);
 
 impl defmt::Format for Visualizer4 {
     fn format(&self, f: defmt::Formatter) {

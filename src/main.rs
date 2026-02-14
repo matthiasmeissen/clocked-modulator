@@ -33,6 +33,7 @@ struct SharedState {
     alarm: AlarmType,
     next_fire: u64,
     phasor: phasor::PhasorBank,
+    mod_config: modulator::ModulatorConfig,
 }
 
 static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
@@ -59,7 +60,8 @@ fn main() -> ! {
     let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
 
     let phasor = phasor::PhasorBank::new(120.0, tick_rate_hz);
-    let modulator = modulator::Modulator::new();
+    let mod_engine = modulator::ModulatorEngine;
+    let mod_config = modulator::ModulatorConfig::default();
 
     let mut alarm: crate::AlarmType = board.timer.alarm_0().unwrap();
     let first_fire: rp235x_hal::fugit::Instant<u64, 1, 1000000> = board.timer.get_counter() + crate::TICK_INTERVAL;
@@ -71,6 +73,7 @@ fn main() -> ! {
             alarm, 
             next_fire: first_fire.ticks(),
             phasor,
+            mod_config,
         }));
     });
 
@@ -117,27 +120,27 @@ fn main() -> ! {
             }
         }
 
-        // Copy phases out of the critical section
-        let phases = cortex_m::interrupt::free(|cs| {
-            SHARED_STATE.borrow(cs).borrow().as_ref()
-                .map(|s| s.phasor.phases)
+        // Copy phasor and config out of the critical section
+        let (phasor, config) = cortex_m::interrupt::free(|cs| {
+            let state = SHARED_STATE.borrow(cs).borrow();
+            let state = state.as_ref().unwrap();
+            (state.phasor, state.mod_config)
         });
 
-        if let Some(phases) = phases {
-            let data = modulator.compute_values(&phases);
-            let tx_buffer = modulator.get_values_as_bytes(&phases);
+        let values = mod_engine.compute(phasor, &config);
+        let tx_buffer = mod_engine.compute_bytes(phasor, &config);
 
-            // Send data bytes over USB with delay
-            cortex_m::asm::delay(12_000_000 / 100);
-            let _ = board.serial.write(&tx_buffer);
 
-            if data[3] > 0.5 {
-                led_pin.set_high().unwrap();
-            } else {
-                led_pin.set_low().unwrap();
-            }
-            defmt::info!("{}", modulator::Visualizer4(data));
+        // Send data bytes over USB with delay
+        cortex_m::asm::delay(12_000_000 / 100);
+        let _ = board.serial.write(&tx_buffer);
+
+        if values[3] > 0.5 {
+            led_pin.set_high().unwrap();
+        } else {
+            led_pin.set_low().unwrap();
         }
+        defmt::info!("{}", modulator::Visualizer4(values));
 
         // asm::wfi();
     }

@@ -29,7 +29,7 @@ impl Multiplier {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PhasorBank {
     pub phases: [f32; Multiplier::ALL.len()],
     tick_rate: f32,
