@@ -119,6 +119,7 @@ dependencies = [
  "embassy-rp",
  "embassy-time",
  "embedded-graphics",
+ "micromath",
  "panic-probe",
  "sh1106",
 ]
