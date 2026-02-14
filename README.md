@@ -8,3 +8,4 @@ A clocked modulation source build on embedded hardware.
 - [rp-235x template](https://github.com/rp-rs/rp235x-project-template/tree/main)
 - [pico 2 template](https://github.com/ImplFerris/pico2-template/tree/main)
 - [rp235x hal examples](https://github.com/rp-rs/rp-hal/tree/main/rp235x-hal-examples)
+- [embassy rs examples](https://github.com/embassy-rs/embassy/tree/main/examples/rp)

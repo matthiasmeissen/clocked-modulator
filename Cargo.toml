@@ -23,3 +23,5 @@ embassy-rp = { version = "0.9.0", features = [
   "rp235xa",
   "binary-info",
 ] }
+embedded-graphics = "0.8.1"
+sh1106 = "0.5.0"
