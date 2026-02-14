@@ -7,9 +7,11 @@ use embedded_graphics::{
     mono_font::ascii::FONT_6X10,
 };
 
-use sh1106::{prelude::*, Builder};
+use sh1106::{prelude::*, Builder, interface::I2cInterface};
 
-pub fn init(i2c: crate::board::I2CType) {
+pub type Display = GraphicsMode<I2cInterface<crate::board::I2CType>>;
+
+pub fn init(i2c: crate::board::I2CType) -> Display {
     let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
 
     display.init().unwrap();
@@ -25,4 +27,6 @@ pub fn init(i2c: crate::board::I2CType) {
         .unwrap();
 
     display.flush().unwrap();
+
+    display
 }

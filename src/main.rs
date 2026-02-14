@@ -80,13 +80,15 @@ fn main() -> ! {
     unsafe { cortex_m::peripheral::NVIC::unmask(hal::pac::Interrupt::TIMER0_IRQ_0) };
     cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
 
-    display::init(board.i2c);
+    let mut display = display::init(board.i2c);
 
     let mut led_pin = board.led_pin;
     led_pin.set_high().unwrap();
 
     loop {
         // USB poll data
+        let mut new_bpm = None;
+
         if board.usb_device.poll(&mut [&mut board.serial]) {
              let mut buf = [0u8; 64];
 
@@ -99,15 +101,7 @@ fn main() -> ! {
                         // 1. Grab the 4 bytes representing the float
                         let bytes = [buf[i+1], buf[i+2], buf[i+3], buf[i+4]];
                         // 2. Convert bytes to float (Standard Rust function)
-                        let bpm = f32::from_le_bytes(bytes);
-                        
-                        cortex_m::interrupt::free(|cs| {
-                            if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                                state.phasor.set_bpm(bpm);
-                            }
-                        });
-                        
-                        defmt::info!("Received BPM: {}", bpm);
+                        new_bpm = Some(f32::from_le_bytes(bytes));
 
                         // 4. Important: Jump forward 5 bytes so we don't read the same data again
                         i += 5;
@@ -119,6 +113,18 @@ fn main() -> ! {
                 }
             }
         }
+
+        if let Some(bpm) = new_bpm {
+            cortex_m::interrupt::free(|cs| {
+                if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
+                    state.phasor.set_bpm(bpm);
+                }
+            });
+            
+            defmt::info!("Received BPM: {}", bpm);
+        }
+
+        
 
         // Copy phasor and config out of the critical section
         let (phasor, config) = cortex_m::interrupt::free(|cs| {
