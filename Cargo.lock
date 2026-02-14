@@ -118,6 +118,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-hal 1.0.0",
  "libm",
+ "micromath",
  "panic-halt",
  "rp235x-hal",
  "sh1106",

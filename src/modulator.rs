@@ -1,6 +1,6 @@
 
 use core::f32::consts::TAU;
-use libm::sinf;
+use micromath::F32Ext;
 use crate::phasor::{Multiplier, PhasorBank};
 
 #[derive(Clone, Copy)]
@@ -15,7 +15,7 @@ impl Waveshape {
     //* Normalized values between 0.0 and 1.0 */
     pub fn compute_from_phasor(self, phase: f32) -> f32 {
         match self {
-            Waveshape::Sin => (sinf(phase * TAU) + 1.0) * 0.5,
+            Waveshape::Sin => ((phase * TAU).sin() + 1.0) * 0.5,
             Waveshape::Tri => 1.0 - ((phase - 0.5).abs() * 2.0),
             Waveshape::Squ => if phase > 0.5 { 1.0 } else { 0.0 },
             Waveshape::Saw => phase,
