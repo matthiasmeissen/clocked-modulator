@@ -2,153 +2,25 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
-use cortex_m::{self, asm, interrupt::Mutex};
-use embedded_hal::digital::OutputPin;
-use rp235x_hal as hal;
-use hal::timer::{Alarm, Instant};
-use hal::pac::interrupt;
-use hal::fugit::MicrosDurationU32;
-use panic_halt as _;
-use defmt_rtt as _;
-use defmt;
+use defmt::*;
+use embassy_executor::Spawner;
+use embassy_rp::gpio;
+use embassy_time::Timer;
+use gpio::{Level, Output};
+use {defmt_rtt as _, panic_probe as _};
 
-use crate::board::Board;
-
-mod phasor;
-mod modulator;
-mod board;
-mod display;
-
-#[unsafe(link_section = ".start_block")]
-#[used]
-pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
-
-// 1kHz = 1000 microseconds
-pub const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
-
-pub type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
-
-struct SharedState {
-    alarm: AlarmType,
-    next_fire: u64,
-    phasor: phasor::PhasorBank,
-    mod_config: modulator::ModulatorConfig,
-}
-
-static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
-
-#[interrupt]
-fn TIMER0_IRQ_0() {
-    cortex_m::interrupt::free(|cs| {
-        if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-            state.alarm.clear_interrupt();
-
-            state.phasor.tick();
-
-            let next = state.next_fire + TICK_INTERVAL.ticks() as u64;
-            state.next_fire = next;
-            let _ = state.alarm.schedule_at(Instant::from_ticks(next));
-        }
-    })
-}
-
-#[hal::entry]
-fn main() -> ! {
-    let mut board = Board::init();
-
-    let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
-
-    let phasor = phasor::PhasorBank::new(120.0, tick_rate_hz);
-    let mod_engine = modulator::ModulatorEngine;
-    let mod_config = modulator::ModulatorConfig::default();
-
-    let mut alarm: crate::AlarmType = board.timer.alarm_0().unwrap();
-    let first_fire: rp235x_hal::fugit::Instant<u64, 1, 1000000> = board.timer.get_counter() + crate::TICK_INTERVAL;
-    alarm.schedule_at(first_fire).unwrap();
-    alarm.enable_interrupt();
-
-    cortex_m::interrupt::free(|cs| {
-        SHARED_STATE.borrow(cs).replace(Some(SharedState { 
-            alarm, 
-            next_fire: first_fire.ticks(),
-            phasor,
-            mod_config,
-        }));
-    });
-
-    unsafe { cortex_m::peripheral::NVIC::unmask(hal::pac::Interrupt::TIMER0_IRQ_0) };
-    cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
-
-    let mut display = display::init(board.i2c);
-
-    let mut led_pin = board.led_pin;
-    led_pin.set_high().unwrap();
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) {
+    let p = embassy_rp::init(Default::default());
+    let mut led = Output::new(p.PIN_25, Level::Low);
 
     loop {
-        // USB poll data
-        let mut new_bpm = None;
-        let mut current_bpm = 120.0;
+        info!("led on!");
+        led.set_high();
+        Timer::after_secs(1).await;
 
-        if board.usb_device.poll(&mut [&mut board.serial]) {
-             let mut buf = [0u8; 64];
-
-             if let Ok(count) = board.serial.read(&mut buf) {
-                let mut i = 0;
-                // Keep looping while we have at least 5 bytes remaining (1 Header + 4 Float)
-                while i + 5 <= count {
-                    // Check for the 'B' Header
-                    if buf[i] == b'B' {                        
-                        // 1. Grab the 4 bytes representing the float
-                        let bytes = [buf[i+1], buf[i+2], buf[i+3], buf[i+4]];
-                        // 2. Convert bytes to float (Standard Rust function)
-                        new_bpm = Some(f32::from_le_bytes(bytes));
-
-                        // 4. Important: Jump forward 5 bytes so we don't read the same data again
-                        i += 5;
-                        
-                    } else {
-                        // If it wasn't 'B', move 1 byte forward and try again
-                        i += 1;
-                    }
-                }
-            }
-        }
-
-        if let Some(bpm) = new_bpm {
-            cortex_m::interrupt::free(|cs| {
-                if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                    state.phasor.set_bpm(bpm);
-                    current_bpm = bpm;
-                }
-            });
-            
-            defmt::info!("Received BPM: {}", bpm);
-        }
-
-        // Copy phasor and config out of the critical section
-        let (phasor, config) = cortex_m::interrupt::free(|cs| {
-            let state = SHARED_STATE.borrow(cs).borrow();
-            let state = state.as_ref().unwrap();
-            (state.phasor, state.mod_config)
-        });
-
-        let values = mod_engine.compute(phasor, &config);
-        let tx_buffer = mod_engine.compute_bytes(phasor, &config);
-
-        display::draw_screen(&mut display, values, current_bpm);
-
-        // Send data bytes over USB with delay
-        cortex_m::asm::delay(12_000_000 / 100);
-        let _ = board.serial.write(&tx_buffer);
-
-        if values[3] > 0.5 {
-            led_pin.set_high().unwrap();
-        } else {
-            led_pin.set_low().unwrap();
-        }
-        //defmt::info!("{}", modulator::Visualizer4(values));
-
-        // asm::wfi();
+        info!("led off!");
+        led.set_low();
+        Timer::after_secs(1).await;
     }
 }
