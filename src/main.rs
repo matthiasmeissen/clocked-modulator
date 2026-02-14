@@ -1,105 +1,111 @@
-
 #![no_std]
 #![no_main]
 
 use defmt::*;
-use embassy_executor::{Spawner, task};
-use embassy_rp::gpio;
+use embassy_executor::{Executor, task};
 use embassy_rp::peripherals::I2C0;
-use embassy_rp::{bind_interrupts, i2c};
-use embassy_time::{Duration, Ticker, Timer};
-
-use embedded_graphics::Drawable;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
+use embassy_rp::i2c;
+use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Ticker};
+use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::pixelcolor::BinaryColor;
-
-use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Baseline, Text};
-use gpio::{Level, Output};
+use sh1106::{prelude::*, Builder};
+use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
-
-use sh1106::{prelude::*, Builder, interface::I2cInterface};
 
 mod phasor;
 mod modulator;
+mod display;
 
-bind_interrupts!(struct Irqs {
-    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
-});
+// Core 1 stack - must be static
+static mut CORE1_STACK: Stack<16384> = Stack::new();
 
+// Executors must be static to live forever
+static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+
+// Shared state across cores
+static SHARED_VALUES: Mutex<CriticalSectionRawMutex, [f32; 4]> = Mutex::new([0.0; 4]);
+
+pub type DisplayType = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
+
+// --- CORE 1: DISPLAY ---
 #[task]
-async fn display_task(i2c_bus: i2c::I2c<'static, I2C0, i2c::Async>) {
-    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c_bus).into();
+async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
+    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
 
-    display
-        .init()
-        .expect("failed to initialize the display");
+    // Fix 1: sh1106::Error doesn't implement defmt::Format, so don't try to print it
+    if display.init().is_err() {
+        error!("Display init failed");
+        return;
+    }
+    info!("Core 1: Display initialized");
 
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
+    let mut ticker = Ticker::every(Duration::from_hz(30));
 
-    Text::with_baseline("Hello, Rust!", Point::new(0, 16), text_style, Baseline::Top)
-        .draw(&mut display)
-        .expect("failed to draw text to display");
+    loop {
+        ticker.next().await;
+        
+        let values = *SHARED_VALUES.lock().await;
 
-    display
-        .flush()
-        .expect("failed to flush data to display");
+        display::draw_screen(&mut display, values);
+    }
 }
 
+// --- CORE 0: MODULATOR ---
 #[task]
 async fn modulator_task() {
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
     let engine = modulator::ModulatorEngine;
     let config = modulator::ModulatorConfig::default();
     
-    let mut ticker = Ticker::every(Duration::from_micros(1000)); // 1kHz base
-    
+    let mut ticker = Ticker::every(Duration::from_micros(1000));
     let mut count = 0u32;
     
+    info!("Core 0: Modulator started");
+
     loop {
         ticker.next().await;
-        
-        // 1kHz: Tick phasor
         phasor.tick();
         count += 1;
         
-        // 100Hz: Every 10 ticks
         if count % 10 == 0 {
             let values = engine.compute(phasor, &config);
-            let bytes = engine.compute_bytes(phasor, &config);
-
-            info!("{}", values);
+            *SHARED_VALUES.lock().await = values;
+            info!("Core 0: {:?}", values);
         }
     }
 }
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
+fn core1_main(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) -> ! {
+    let executor1 = EXECUTOR1.init(Executor::new());
+    executor1.run(|spawner| {
+        let _ = spawner.spawn(display_task(i2c));
+    });
+}
+
+#[cortex_m_rt::entry]
+fn main() -> ! {
     let p = embassy_rp::init(Default::default());
-    let mut led = Output::new(p.PIN_25, Level::Low);
 
     let sda = p.PIN_16;
     let scl = p.PIN_17;
+    let i2c_config = i2c::Config::default();
+    let i2c = i2c::I2c::new_blocking(p.I2C0, scl, sda, i2c_config);
 
-    let mut i2c_config = i2c::Config::default();
-    i2c_config.frequency = 400_000;
+    // Launch Core 1
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || core1_main(i2c),
+    );
 
-    let i2c_bus = i2c::I2c::new_async(p.I2C0, scl, sda, Irqs, i2c_config);
-
-    let _ = spawner.spawn(modulator_task());
-    let _ = spawner.spawn(display_task(i2c_bus));
-
-    loop {
-        info!("led on!");
-        led.set_high();
-        Timer::after_secs(1).await;
-
-        info!("led off!");
-        led.set_low();
-        Timer::after_secs(1).await;
-    }
+    // Fix 3: Use static EXECUTOR0, not a local StaticCell
+    let executor0 = EXECUTOR0.init(Executor::new());
+    executor0.run(|spawner| {
+        let _ = spawner.spawn(modulator_task());
+    });
 }
