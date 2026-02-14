@@ -4,6 +4,10 @@
 
 use core::cell::RefCell;
 use cortex_m::{self, asm, interrupt::Mutex};
+use embedded_graphics::Drawable;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::{Point, Primitive, Size};
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_hal::digital::OutputPin;
 use rp235x_hal as hal;
 use hal::timer::{Alarm, Instant};
@@ -124,8 +128,6 @@ fn main() -> ! {
             defmt::info!("Received BPM: {}", bpm);
         }
 
-        
-
         // Copy phasor and config out of the critical section
         let (phasor, config) = cortex_m::interrupt::free(|cs| {
             let state = SHARED_STATE.borrow(cs).borrow();
@@ -136,6 +138,7 @@ fn main() -> ! {
         let values = mod_engine.compute(phasor, &config);
         let tx_buffer = mod_engine.compute_bytes(phasor, &config);
 
+        display::draw_screen(&mut display, values);
 
         // Send data bytes over USB with delay
         cortex_m::asm::delay(12_000_000 / 100);
@@ -146,7 +149,7 @@ fn main() -> ! {
         } else {
             led_pin.set_low().unwrap();
         }
-        defmt::info!("{}", modulator::Visualizer4(values));
+        //defmt::info!("{}", modulator::Visualizer4(values));
 
         // asm::wfi();
     }
