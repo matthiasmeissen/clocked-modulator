@@ -4,10 +4,12 @@ use heapless::String;
 use embedded_graphics::{
     Drawable, mono_font::{MonoTextStyleBuilder, ascii::FONT_6X10}, pixelcolor::BinaryColor, prelude::{DrawTarget, Point, Primitive, Size}, primitives::{PrimitiveStyle, Rectangle}, text::Text
 };
+use embassy_rp::peripherals::I2C0;
+use embassy_rp::i2c;
 
 use sh1106::{prelude::*, Builder, interface::I2cInterface};
 
-use crate::DisplayType;
+pub type DisplayType = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 pub fn draw_screen(display: &mut DisplayType, values: [f32; 4]) {
     display.clear();
