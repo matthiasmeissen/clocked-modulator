@@ -3,19 +3,18 @@ use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::{Builder, Config};
-use embassy_sync::signal::Signal;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, Sender, Receiver};
+use embassy_sync::channel::Receiver;
+use embassy_sync::pubsub::Publisher;
 use embassy_futures::join::join3;
-use heapless::Vec;
 use static_cell::StaticCell;
 use defmt::*;
+
+use crate::modulator::PACKET_SIZE;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
-
-static TX_CHAN: StaticCell<Channel<CriticalSectionRawMutex, Vec<u8, 64>, 4>> = StaticCell::new();
 
 static CONFIG_DESC: StaticCell<[u8; 256]> = StaticCell::new();
 static BOS_DESC: StaticCell<[u8; 256]> = StaticCell::new();
@@ -25,10 +24,10 @@ static CDC_STATE: StaticCell<State> = StaticCell::new();
 
 pub fn init(
     usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>,
-    bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
-    display_bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
+    bpm_pub: Publisher<'static, CriticalSectionRawMutex, f32, 2, 2, 1>,
+    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
     spawner: embassy_executor::Spawner,
-) -> Sender<'static, CriticalSectionRawMutex, Vec<u8, 64>, 4> {
+) {
     let driver = Driver::new(usb, Irqs);
 
     let mut config = Config::new(0xc0de, 0xcafe);
@@ -45,83 +44,63 @@ pub fn init(
     );
 
     let class = CdcAcmClass::new(&mut builder, CDC_STATE.init(State::new()), 64);
-    let tx_chan = TX_CHAN.init(Channel::new());
 
-    spawner.spawn(usb_task(builder.build(), class, tx_chan.receiver(), bpm_signal, display_bpm_signal)).ok();
-
-    tx_chan.sender()
+    spawner
+        .spawn(usb_task(builder.build(), class, tx_recv, bpm_pub))
+        .ok();
 }
 
 #[embassy_executor::task]
 async fn usb_task(
     mut usb: embassy_usb::UsbDevice<'static, Driver<'static, USB>>,
     class: CdcAcmClass<'static, Driver<'static, USB>>,
-    tx_recv: Receiver<'static, CriticalSectionRawMutex, Vec<u8, 64>, 4>,
-    bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
-    display_bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
+    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
+    bpm_pub: Publisher<'static, CriticalSectionRawMutex, f32, 2, 2, 1>,
 ) {
-    let (mut usb_tx, mut usb_rx) = class.split();
+    let (mut tx, mut rx) = class.split();
 
     let usb_fut = usb.run();
 
-    let write_fut = async {
+    let tx_fut = async {
         loop {
             let data = tx_recv.receive().await;
-            let _ = usb_tx.write_packet(&data).await;
-            if data.len() == 64 {
-                let _ = usb_tx.write_packet(&[]).await;
-            }
+            let _ = tx.write_packet(&data).await;
         }
     };
 
-    let read_fut = async {
+    let rx_fut = async {
         let mut buf = [0u8; 64];
-        let mut stash: [u8; 10] = [0; 10];
-        let mut stash_len = 0;
+        let mut state: u8 = 0;
+        let mut bpm_bytes = [0u8; 4];
 
         loop {
-            match usb_rx.read_packet(&mut buf).await {
+            match rx.read_packet(&mut buf).await {
                 Ok(n) => {
-                    for i in 0..n {
-                        if stash_len < 10 {
-                            stash[stash_len] = buf[i];
-                            stash_len += 1;
-                        }
-                    }
-
-                    let mut i = 0;
-                    while i + 5 <= stash_len {
-                        if stash[i] == b'B' {
-                            let bpm = f32::from_le_bytes([
-                                stash[i + 1],
-                                stash[i + 2],
-                                stash[i + 3],
-                                stash[i + 4],
-                            ]);
-                            bpm_signal.signal(bpm);
-                            display_bpm_signal.signal(bpm);
-                            info!("USB BPM: {}", bpm);
-
-                            let remaining = stash_len - (i + 5);
-                            for j in 0..remaining {
-                                stash[j] = stash[i + 5 + j];
+                    for &b in &buf[..n] {
+                        match state {
+                            0 => {
+                                if b == b'B' {
+                                    state = 1;
+                                }
                             }
-                            stash_len = remaining;
-                            i = 0;
-                        } else {
-                            i += 1;
+                            1..=4 => {
+                                bpm_bytes[state as usize - 1] = b;
+                                state += 1;
+                                if state == 5 {
+                                    let bpm = f32::from_le_bytes(bpm_bytes);
+                                    bpm_pub.publish_immediate(bpm);
+                                    info!("USB BPM: {}", bpm);
+                                    state = 0;
+                                }
+                            }
+                            _ => state = 0,
                         }
                     }
-                    if stash_len > 5 {
-                        stash_len = 0;
-                    }
                 }
-                Err(_) => {
-                    stash_len = 0;
-                }
+                Err(_) => state = 0,
             }
         }
     };
 
-    join3(usb_fut, write_fut, read_fut).await;
+    join3(usb_fut, tx_fut, rx_fut).await;
 }

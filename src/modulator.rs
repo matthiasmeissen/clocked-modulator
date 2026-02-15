@@ -40,7 +40,7 @@ impl ModSlot {
 
 
 pub const NUM_MODULATORS: usize = 8;
-const OUTPUT_BUFFER_SIZE: usize = 2 + NUM_MODULATORS * 4;
+pub const PACKET_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
 #[derive(Clone, Copy)]
 pub struct ModulatorConfig {
@@ -67,7 +67,7 @@ impl Default for ModulatorConfig {
 pub struct ModulatorEngine;
 
 impl ModulatorEngine {
-    pub fn compute(&self, phasor: PhasorBank, config: &ModulatorConfig) -> [f32; NUM_MODULATORS] {
+    pub fn compute(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [f32; NUM_MODULATORS] {
         let mut values = [0.0; NUM_MODULATORS];
 
         for (i, slot) in config.slots.iter().enumerate() {
@@ -77,9 +77,9 @@ impl ModulatorEngine {
         values
     }
 
-    pub fn compute_bytes(&self, phasor: PhasorBank, config: &ModulatorConfig) -> [u8; OUTPUT_BUFFER_SIZE] {
-        let outputs = self.compute( phasor, config );
-        let mut buffer = [0u8; OUTPUT_BUFFER_SIZE];
+    pub fn compute_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [u8; PACKET_SIZE] {
+        let outputs = self.compute(phasor, config);
+        let mut buffer = [0u8; PACKET_SIZE];
 
         // Sync header (must match TouchDesigner parser)
         buffer[0] = 0xAA;
