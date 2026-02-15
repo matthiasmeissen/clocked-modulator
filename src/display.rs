@@ -1,9 +1,9 @@
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    mono_font::{MonoTextStyle, ascii::FONT_6X10},
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
-    text::Text,
+    primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
+    text::{Baseline, Text, TextStyleBuilder},
 };
 use embassy_rp::i2c;
 use embassy_rp::peripherals::I2C0;
@@ -11,44 +11,73 @@ use sh1106::{interface::I2cInterface, prelude::*, Builder};
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
-const TEXT_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-const BAR_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
+const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
+const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
 
-pub struct Display(Driver);
+pub struct Display {
+    driver: Driver,
+}
 
 impl Display {
     pub fn new(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) -> Self {
         let mut driver: Driver = Builder::new().connect_i2c(i2c).into();
         driver.init().expect("Display init failed");
-        Self(driver)
+        Self { driver }
     }
 
-    pub fn draw_bpm(&mut self, bpm: f32) {
-        self.0.clear();
+    pub fn draw_main(&mut self, bpm: f32) {
+        self.driver.clear();
 
+        self.draw_bpm(bpm);
+        self.draw_modulator(Point::new(0, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(30, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(60, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(90, 12), "SIN", "X2");
+
+        self.draw_modulator(Point::new(0, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(30, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(60, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(90, 36), "SAW", "D4");
+        
+        self.driver.flush().ok();
+    }
+
+    fn draw_bpm(&mut self, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        Text::new(s, Point::new(0, 20), TEXT_STYLE)
-            .draw(&mut self.0)
+        Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver)
             .ok();
-        self.0.flush().ok();
+    }
+
+    fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
+        Rectangle::new(pos, Size::new(28, 22))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+
+        Text::with_baseline(wave, Point::new(pos.x + 2, pos.y + 1), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
+
+        Text::with_baseline(mul, Point::new(pos.x + 2, pos.y + 12), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
     }
 
     pub fn draw_bars(&mut self, values: &[f32; 4]) {
-        self.0.clear();
+        self.driver.clear();
 
         for (i, &value) in values.iter().enumerate() {
             let y = 25 + i as i32 * 10;
             let width = (value * 128.0) as u32;
             Rectangle::new(Point::new(0, y), Size::new(width, 5))
-                .into_styled(BAR_STYLE)
-                .draw(&mut self.0)
+                .into_styled(FILL_STYLE)
+                .draw(&mut self.driver)
                 .ok();
         }
 
-        self.0.flush().ok();
+        self.driver.flush().ok();
     }
 }
 

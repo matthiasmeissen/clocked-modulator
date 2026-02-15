@@ -26,6 +26,15 @@ impl Multiplier {
     pub fn index(self) -> usize {
         Self::ALL.iter().position(|&m| m == self).unwrap()
     }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Multiplier::D4 => "D4",
+            Multiplier::D2 => "D2",
+            Multiplier::X1 => "X1",
+            Multiplier::X2 => "X2",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

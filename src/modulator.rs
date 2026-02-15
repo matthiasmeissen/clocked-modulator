@@ -22,8 +22,8 @@ impl Waveshape {
 
 #[derive(Clone, Copy)]
 pub struct ModSlot {
-    mul: Multiplier,
-    wave: Waveshape,
+    pub mul: Multiplier,
+    pub wave: Waveshape,
 }
 
 impl ModSlot {

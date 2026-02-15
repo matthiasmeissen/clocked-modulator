@@ -66,18 +66,29 @@ async fn modulator_task() {
     }
 }
 
-// Sleeps until a BPM change arrives, then redraws. Zero CPU when idle.
+// Redraws at most 10Hz. Collects the latest state each frame, skips draw if nothing changed.
 #[embassy_executor::task]
 async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
     let mut disp = display::Display::new(i2c);
     let mut bpm_sub = BPM_BUS.subscriber().unwrap();
+    let mut ticker = Ticker::every(Duration::from_millis(100)); // 10Hz
 
-    disp.draw_bpm(120.0);
+    let mut current_bpm: f32 = 120.0;
+    let mut dirty = true;
 
     loop {
-        // Blocks until a new BPM value is published on BPM_BUS
-        let bpm = bpm_sub.next_message_pure().await;
-        disp.draw_bpm(bpm);
+        ticker.next().await;
+
+        // Drain all pending BPM updates, keep only the latest
+        while let Some(bpm) = bpm_sub.try_next_message_pure() {
+            current_bpm = bpm;
+            dirty = true;
+        }
+
+        if dirty {
+            disp.draw_main(current_bpm);
+            dirty = false;
+        }
     }
 }
 
