@@ -85,7 +85,9 @@ async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c::Config::default());
+    let mut i2c_config = i2c::Config::default();
+    i2c_config.frequency = 400_000;
+    let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
 
     // Start the USB task (handles enumeration, TX from USB_TX channel, RX publishes to BPM_BUS)
     usb::init(p.USB, BPM_BUS.publisher().unwrap(), USB_TX.receiver(), spawner);
