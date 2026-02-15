@@ -16,12 +16,20 @@ mod modulator;
 mod phasor;
 mod usb;
 
-// BPM broadcast: 1 publisher (USB), 2 subscribers (modulator + display), 2 slots
+// Shared communication channels (const-constructed, no StaticCell needed)
+//
+// BPM_BUS broadcasts BPM changes to multiple subscribers.
+// PubSubChannel<Mutex, Type, capacity, max_subscribers, max_publishers>
+// - USB task publishes new BPM values
+// - Modulator task and display task each subscribe independently
 static BPM_BUS: PubSubChannel<CriticalSectionRawMutex, f32, 2, 2, 1> = PubSubChannel::new();
 
-// Fixed-size USB TX channel
+// USB_TX carries fixed-size modulator output packets to the USB write task.
+// Channel depth of 4 absorbs timing jitter between modulator and USB polling.
 static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 4> = Channel::new();
 
+// Timing-critical task: ticks the phasor at 1kHz, computes and sends modulator output at 100Hz.
+// Owns the phasor directly (no mutex) so nothing can delay the tick.
 #[embassy_executor::task]
 async fn modulator_task() {
     let mut bpm_sub = BPM_BUS.subscriber().unwrap();
@@ -31,27 +39,34 @@ async fn modulator_task() {
     let config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
 
-    let mut ticker = Ticker::every(Duration::from_micros(1000)); // 1kHz
+    // Ticker uses absolute timestamps: next wake = start + N * 1000us.
+    // Computation time doesn't cause drift.
+    let mut ticker = Ticker::every(Duration::from_micros(1000));
     let mut tick_count: u32 = 0;
 
     loop {
         ticker.next().await;
 
+        // Non-blocking check: if USB received a new BPM, apply it
         if let Some(bpm) = bpm_sub.try_next_message_pure() {
             phasor.set_bpm(bpm);
             info!("BPM updated to {}", bpm);
         }
 
+        // Advance all 4 phase accumulators (one per beat multiplier)
         phasor.tick();
         tick_count += 1;
 
+        // Every 10th tick (100Hz): apply waveshapes and send result over USB
         if tick_count % 10 == 0 {
             let packet = engine.compute_bytes(&phasor, &config);
+            // try_send is non-blocking; drops the packet if the channel is full
             let _ = usb_tx.try_send(packet);
         }
     }
 }
 
+// Sleeps until a BPM change arrives, then redraws. Zero CPU when idle.
 #[embassy_executor::task]
 async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
     let mut disp = display::Display::new(i2c);
@@ -60,6 +75,7 @@ async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
     disp.draw_bpm(120.0);
 
     loop {
+        // Blocks until a new BPM value is published on BPM_BUS
         let bpm = bpm_sub.next_message_pure().await;
         disp.draw_bpm(bpm);
     }
@@ -71,6 +87,7 @@ async fn main(spawner: Spawner) {
 
     let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c::Config::default());
 
+    // Start the USB task (handles enumeration, TX from USB_TX channel, RX publishes to BPM_BUS)
     usb::init(p.USB, BPM_BUS.publisher().unwrap(), USB_TX.receiver(), spawner);
 
     spawner.spawn(modulator_task()).unwrap();
