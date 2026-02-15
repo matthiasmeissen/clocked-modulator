@@ -22,6 +22,14 @@ pub fn draw_screen(display: &mut DisplayType, values: [f32; 4]) {
     let _ = display.flush();
 }
 
+pub fn draw_bpm_screen(display: &mut DisplayType, value: f32) {
+    display.clear();
+
+    draw_bpm(display, value);
+
+    let _ = display.flush();
+}
+
 pub fn draw_bpm(display: &mut DisplayType, value: f32) {
     let mut buf: String<16> = String::new();
     write!(buf, "{:.0}", value).unwrap();

@@ -39,7 +39,7 @@ impl ModSlot {
 }
 
 
-pub const NUM_MODULATORS: usize = 4;
+pub const NUM_MODULATORS: usize = 8;
 const OUTPUT_BUFFER_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
 #[derive(Clone, Copy)]
@@ -55,6 +55,10 @@ impl Default for ModulatorConfig {
                 ModSlot::new(Multiplier::D2, Waveshape::Tri),
                 ModSlot::new(Multiplier::X1, Waveshape::Saw),
                 ModSlot::new(Multiplier::X2, Waveshape::Squ),
+                ModSlot::new(Multiplier::D4, Waveshape::Tri),
+                ModSlot::new(Multiplier::D2, Waveshape::Sin),
+                ModSlot::new(Multiplier::X1, Waveshape::Squ),
+                ModSlot::new(Multiplier::X2, Waveshape::Saw),
             ]
         }
     }
@@ -110,7 +114,7 @@ impl defmt::Format for Visualizer4 {
                 _ => defmt::write!(f, "{}:█", i),
             }
 
-            if i < 3 {
+            if i < NUM_MODULATORS - 1 {
                 defmt::write!(f, " | ");
             }
         }

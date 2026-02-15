@@ -26,6 +26,7 @@ static CDC_STATE: StaticCell<State> = StaticCell::new();
 pub fn init(
     usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>,
     bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
+    display_bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
     spawner: embassy_executor::Spawner,
 ) -> Sender<'static, CriticalSectionRawMutex, Vec<u8, 64>, 4> {
     let driver = Driver::new(usb, Irqs);
@@ -46,7 +47,7 @@ pub fn init(
     let class = CdcAcmClass::new(&mut builder, CDC_STATE.init(State::new()), 64);
     let tx_chan = TX_CHAN.init(Channel::new());
 
-    spawner.spawn(usb_task(builder.build(), class, tx_chan.receiver(), bpm_signal)).ok();
+    spawner.spawn(usb_task(builder.build(), class, tx_chan.receiver(), bpm_signal, display_bpm_signal)).ok();
 
     tx_chan.sender()
 }
@@ -57,6 +58,7 @@ async fn usb_task(
     class: CdcAcmClass<'static, Driver<'static, USB>>,
     tx_recv: Receiver<'static, CriticalSectionRawMutex, Vec<u8, 64>, 4>,
     bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
+    display_bpm_signal: &'static Signal<CriticalSectionRawMutex, f32>,
 ) {
     let (mut usb_tx, mut usb_rx) = class.split();
 
@@ -97,6 +99,7 @@ async fn usb_task(
                                 stash[i + 4],
                             ]);
                             bpm_signal.signal(bpm);
+                            display_bpm_signal.signal(bpm);
                             info!("USB BPM: {}", bpm);
 
                             let remaining = stash_len - (i + 5);
