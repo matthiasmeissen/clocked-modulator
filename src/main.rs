@@ -8,7 +8,8 @@ use embassy_rp::peripherals::I2C0;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::PubSubChannel;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Timer,  Ticker};
+use embassy_rp::gpio::{Input, Level, Pull};
 use {defmt_rtt as _, panic_probe as _};
 
 mod display;
@@ -92,17 +93,80 @@ async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
     }
 }
 
+#[embassy_executor::task]
+async fn button_task(mut button: Input<'static>) {
+    let debounce = Duration::from_millis(50);
+
+    loop {
+        // Wait for press (pull-up → low = pressed)
+        button.wait_for_low().await;
+        Timer::after(debounce).await;
+
+        if button.is_low() {
+            let press_start = Instant::now();
+            info!("Button pressed!");
+
+            // Wait for release
+            button.wait_for_high().await;
+            Timer::after(debounce).await;
+
+            let held_ms = press_start.elapsed().as_millis();
+            info!("Button released (held {}ms)", held_ms);
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn encoder_task(mut pin_a: Input<'static>, pin_b: Input<'static>) {
+    let mut position: i32 = 0;
+    let mut last_a = pin_a.is_low();
+
+    loop {
+        // Wait for any edge on pin A
+        if last_a {
+            pin_a.wait_for_high().await;
+        } else {
+            pin_a.wait_for_low().await;
+        }
+
+        let a = pin_a.is_low();
+        let b = pin_b.is_low();
+
+        // Determine direction: if A and B differ → CW, same → CCW
+        if a != last_a {
+            if a != b {
+                position += 1;
+            } else {
+                position -= 1;
+            }
+            info!("Position: {}", position);
+        }
+
+        last_a = a;
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    let mut i2c_config = i2c::Config::default();
-    i2c_config.frequency = 400_000;
-    let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
+    info!("Rotary encoder test started");
 
-    // Start the USB task (handles enumeration, TX from USB_TX channel, RX publishes to BPM_BUS)
-    usb::init(p.USB, BPM_BUS.publisher().unwrap(), USB_TX.receiver(), spawner);
+    // Encoder pins - internal pull-ups, active low
+    let pin_a = Input::new(p.PIN_14, Pull::Up);  // CLK
+    let pin_b = Input::new(p.PIN_15, Pull::Up);  // DT
+    let button = Input::new(p.PIN_18, Pull::Up);  // Push button
 
-    spawner.spawn(modulator_task()).unwrap();
-    spawner.spawn(display_task(i2c)).unwrap();
+    spawner.must_spawn(encoder_task(pin_a, pin_b));
+    spawner.must_spawn(button_task(button));
+
+    // let mut i2c_config = i2c::Config::default();
+    // i2c_config.frequency = 400_000;
+    // let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
+
+    // // Start the USB task (handles enumeration, TX from USB_TX channel, RX publishes to BPM_BUS)
+    // usb::init(p.USB, BPM_BUS.publisher().unwrap(), USB_TX.receiver(), spawner);
+
+    // spawner.spawn(modulator_task()).unwrap();
+    // spawner.spawn(display_task(i2c)).unwrap();
 }
