@@ -9,11 +9,60 @@ use embassy_rp::i2c;
 use embassy_rp::peripherals::I2C0;
 use sh1106::{interface::I2cInterface, prelude::*, Builder};
 
+use crate::{encoder::InputEvent, modulator::ModulatorConfig};
+
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+
+
+// ------------------------------
+// State Machine
+// ------------------------------
+
+#[derive(Clone, Copy)]
+pub enum SlotParam {
+    Wave,
+    Mul,
+}
+
+#[derive(Clone, Copy)]
+pub enum NavState {
+    Browse { index: u8 },
+    EditBpm,
+    SlotFocus { slot: u8, param: SlotParam },
+    SlotEdit { slot: u8, param: SlotParam },
+}
+
+impl NavState {
+    pub fn handle(self, event: InputEvent, config: &mut ModulatorConfig, bpm: &mut u16) -> Self {
+        match (self, event) {
+            (Self::Browse { index: 0 }, InputEvent::Enter) => {
+                NavState::EditBpm
+            }
+            // Edit BPM
+            (Self::EditBpm, InputEvent::Next) => {
+                *bpm += 1;
+                NavState::EditBpm
+            }
+            (Self::EditBpm, InputEvent::Prev) => {
+                *bpm -= 1;
+                NavState::EditBpm
+            }
+            (Self::EditBpm, InputEvent::Enter | InputEvent::Back) => {
+                NavState::Browse { index: 0 }
+            }
+            _ => self
+        }
+    }
+}
+
+
+// ------------------------------
+// Display and UI
+// ------------------------------
 
 pub struct Display {
     driver: Driver,

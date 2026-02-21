@@ -100,8 +100,6 @@ async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    info!("Rotary encoder test started");
-
     // Encoder pins - internal pull-ups, active low
     let pin_a = Input::new(p.PIN_14, Pull::Up);  // CLK
     let pin_b = Input::new(p.PIN_15, Pull::Up);  // DT
@@ -119,8 +117,13 @@ async fn main(spawner: Spawner) {
     spawner.spawn(modulator_task()).unwrap();
     spawner.spawn(display_task(i2c)).unwrap();
 
+    let mut nav = display::NavState::Browse { index: 0 };
+    let mut config = modulator::ModulatorConfig::default();
+    let mut bpm: u16 = 120;
+
     loop {
         let event = INPUT_EVENTS.receive().await;
-        info!("{}", event);
+        nav = nav.handle(event, &mut config, &mut bpm);
+        info!("nav bpm: {}", bpm);
     }
 }
