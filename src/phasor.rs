@@ -14,6 +14,26 @@ impl Multiplier {
         Multiplier::X2,
     ];
 
+    // Those could be solved more elegantly 
+    // but this approach is readable and fast
+    pub fn next(self) -> Self {
+        match self {
+            Multiplier::D4 => Multiplier::D2,
+            Multiplier::D2 => Multiplier::X1,
+            Multiplier::X1 => Multiplier::X2,
+            Multiplier::X2 => Multiplier::D4,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            Multiplier::D4 => Multiplier::X2,
+            Multiplier::D2 => Multiplier::D4,
+            Multiplier::X1 => Multiplier::D2,
+            Multiplier::X2 => Multiplier::X1,
+        }
+    }
+
     pub fn factor(self) -> f32 {
         match self {
             Multiplier::D4 => 0.25,

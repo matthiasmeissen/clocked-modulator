@@ -1,6 +1,6 @@
 use crate::phasor::{Multiplier, PhasorBank};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Waveshape {
     Sin,
     Tri,
@@ -9,6 +9,33 @@ pub enum Waveshape {
 }
 
 impl Waveshape {
+    pub const ALL: [Waveshape; 4] = [
+        Waveshape::Sin,
+        Waveshape::Tri,
+        Waveshape::Squ,
+        Waveshape::Saw,
+    ];
+
+    // Those could be solved more elegantly 
+    // but this approach is readable and fast
+    pub fn next(self) -> Self {
+        match self {
+            Waveshape::Sin => Waveshape::Tri,
+            Waveshape::Tri => Waveshape::Squ,
+            Waveshape::Squ => Waveshape::Saw,
+            Waveshape::Saw => Waveshape::Sin,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            Waveshape::Sin => Waveshape::Saw,
+            Waveshape::Tri => Waveshape::Sin,
+            Waveshape::Squ => Waveshape::Tri,
+            Waveshape::Saw => Waveshape::Squ,
+        }
+    }
+
     //* Normalized values between 0.0 and 1.0 */
     pub fn compute_from_phasor(self, phase: f32) -> f32 {
         match self {
