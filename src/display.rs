@@ -14,6 +14,7 @@ use crate::{encoder::InputEvent, modulator::ModulatorConfig};
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+const CHARACTER_STYLE_INVERT: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
 const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
 
@@ -44,11 +45,11 @@ impl NavState {
             }
             // Edit BPM
             (Self::EditBpm, InputEvent::Next) => {
-                *bpm += 1;
+                *bpm = (*bpm + 1).min(300);
                 NavState::EditBpm
             }
             (Self::EditBpm, InputEvent::Prev) => {
-                *bpm -= 1;
+                *bpm = bpm.saturating_sub(1).max(20);
                 NavState::EditBpm
             }
             (Self::EditBpm, InputEvent::Enter | InputEvent::Back) => {
@@ -64,6 +65,12 @@ impl NavState {
 // Display and UI
 // ------------------------------
 
+enum UiState {
+    Default,
+    Hover,
+    Active,
+}
+
 pub struct Display {
     driver: Driver,
 }
@@ -75,10 +82,15 @@ impl Display {
         Self { driver }
     }
 
-    pub fn draw_main(&mut self, bpm: f32) {
+    pub fn draw_main(&mut self, bpm: f32, nav: &NavState) {
         self.driver.clear();
 
-        self.draw_bpm(bpm);
+        match nav {
+            NavState::Browse { index: 0 } => self.draw_bpm(bpm, UiState::Hover),
+            NavState::EditBpm => self.draw_bpm(bpm, UiState::Active),
+            _ => self.draw_bpm(bpm, UiState::Default),
+        }
+        
         self.draw_modulator(Point::new(0, 12), "SIN", "X2");
         self.draw_modulator(Point::new(30, 12), "SIN", "X2");
         self.draw_modulator(Point::new(60, 12), "SIN", "X2");
@@ -92,14 +104,34 @@ impl Display {
         self.driver.flush().ok();
     }
 
-    fn draw_bpm(&mut self, bpm: f32) {
+    fn draw_bpm(&mut self, bpm: f32, state: UiState) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver)
-            .ok();
+        match state {
+            UiState::Default => {
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+                .draw(&mut self.driver)
+                .ok();
+            },
+            UiState::Hover => {
+                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
+                    .into_styled(BORDER_STYLE)
+                    .draw(&mut self.driver).ok();
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+                    .draw(&mut self.driver)
+                    .ok();
+            }
+            UiState::Active => {
+                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
+                    .into_styled(FILL_STYLE)
+                    .draw(&mut self.driver).ok();
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE_INVERT, Baseline::Top)
+                    .draw(&mut self.driver)
+                    .ok();
+            }
+        }
     }
 
     fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {

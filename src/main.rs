@@ -20,18 +20,13 @@ mod encoder;
 
 
 static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
-
-// USB_TX carries fixed-size modulator output packets to the USB write task.
-// Channel depth of 4 absorbs timing jitter between modulator and USB polling.
 static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 4> = Channel::new();
-
 static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = Channel::new();
 
 // Timing-critical task: ticks the phasor at 1kHz, computes and sends modulator output at 100Hz.
 // Owns the phasor directly (no mutex) so nothing can delay the tick.
 #[embassy_executor::task]
 async fn modulator_task() {
-    //let mut bpm_sub = BPM_BUS.subscriber().unwrap();
     let usb_tx = USB_TX.sender();
 
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
@@ -65,32 +60,6 @@ async fn modulator_task() {
     }
 }
 
-// // Redraws at most 10Hz. Collects the latest state each frame, skips draw if nothing changed.
-// #[embassy_executor::task]
-// async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
-//     let mut disp = display::Display::new(i2c);
-//     //let mut bpm_sub = BPM_BUS.subscriber().unwrap();
-//     let mut ticker = Ticker::every(Duration::from_millis(100)); // 10Hz
-
-//     let mut current_bpm: f32 = 120.0;
-//     let mut dirty = true;
-
-//     loop {
-//         ticker.next().await;
-
-//         // Drain all pending BPM updates, keep only the latest
-//         while let Some(bpm) = bpm_sub.try_next_message_pure() {
-//             current_bpm = bpm;
-//             dirty = true;
-//         }
-
-//         if dirty {
-//             disp.draw_main(current_bpm);
-//             dirty = false;
-//         }
-//     }
-// }
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
@@ -110,20 +79,19 @@ async fn main(spawner: Spawner) {
     encoder::init_encoder(spawner, button, pin_a, pin_b);
 
     spawner.spawn(modulator_task()).unwrap();
-    //spawner.spawn(display_task(i2c)).unwrap();
 
     let mut nav = display::NavState::Browse { index: 0 };
     let mut config = modulator::ModulatorConfig::default();
     let mut bpm: u16 = 120;
 
     let mut disp = display::Display::new(i2c);
-    disp.draw_main(bpm as f32);
+    disp.draw_main(bpm as f32, &nav);
 
     loop {
         let event = INPUT_EVENTS.receive().await;
         nav = nav.handle(event, &mut config, &mut bpm);
         let _ = BPM_CHANNEL.try_send(bpm as f32);
-        disp.draw_main(bpm as f32);
+        disp.draw_main(bpm as f32, &nav);
         info!("nav bpm: {}", bpm);
     }
 }
