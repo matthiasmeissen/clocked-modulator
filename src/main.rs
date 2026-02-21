@@ -21,7 +21,7 @@ mod encoder;
 static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
 static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 4> = Channel::new();
 static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = Channel::new();
-static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 1> = Channel::new();
+static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
 
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
