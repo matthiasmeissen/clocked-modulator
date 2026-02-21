@@ -6,7 +6,7 @@ use embassy_usb::{Builder, Config};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::pubsub::Publisher;
-use embassy_futures::join::join3;
+use embassy_futures::join::join;
 use static_cell::StaticCell;
 use defmt::*;
 
@@ -31,7 +31,6 @@ static CDC_STATE: StaticCell<State> = StaticCell::new();
 /// - `tx_recv`: receives modulator packets from USB_TX channel
 pub fn init(
     usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>,
-    bpm_pub: Publisher<'static, CriticalSectionRawMutex, f32, 2, 2, 1>,
     tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
     spawner: embassy_executor::Spawner,
 ) {
@@ -56,7 +55,7 @@ pub fn init(
     let class = CdcAcmClass::new(&mut builder, CDC_STATE.init(State::new()), 64);
 
     spawner
-        .spawn(usb_task(builder.build(), class, tx_recv, bpm_pub))
+        .spawn(usb_task(builder.build(), class, tx_recv))
         .ok();
 }
 
@@ -69,14 +68,11 @@ async fn usb_task(
     mut usb: embassy_usb::UsbDevice<'static, Driver<'static, USB>>,
     class: CdcAcmClass<'static, Driver<'static, USB>>,
     tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
-    bpm_pub: Publisher<'static, CriticalSectionRawMutex, f32, 2, 2, 1>,
 ) {
     let (mut tx, mut rx) = class.split();
 
-    // Must run continuously — handles USB enumeration, suspend/resume, resets
     let usb_fut = usb.run();
 
-    // Waits for packets from the modulator task and sends them to the host
     let tx_fut = async {
         loop {
             let data = tx_recv.receive().await;
@@ -84,47 +80,5 @@ async fn usb_task(
         }
     };
 
-    // Parses incoming bytes using a state machine.
-    // Protocol: 'B' (0x42) followed by 4 bytes of little-endian f32 BPM value.
-    //
-    // State transitions:
-    //   0: idle, waiting for 'B' marker byte
-    //   1-4: collecting the 4 BPM bytes
-    //   After byte 4: decode f32, publish to BPM_BUS, reset to 0
-    let rx_fut = async {
-        let mut buf = [0u8; 64];
-        let mut state: u8 = 0;
-        let mut bpm_bytes = [0u8; 4];
-
-        loop {
-            match rx.read_packet(&mut buf).await {
-                Ok(n) => {
-                    for &b in &buf[..n] {
-                        match state {
-                            0 => {
-                                if b == b'B' {
-                                    state = 1;
-                                }
-                            }
-                            1..=4 => {
-                                bpm_bytes[state as usize - 1] = b;
-                                state += 1;
-                                if state == 5 {
-                                    let bpm = f32::from_le_bytes(bpm_bytes);
-                                    bpm_pub.publish_immediate(bpm);
-                                    info!("USB BPM: {}", bpm);
-                                    state = 0;
-                                }
-                            }
-                            _ => state = 0,
-                        }
-                    }
-                }
-                Err(_) => state = 0, // Reset parser on disconnect
-            }
-        }
-    };
-
-    // All three must run concurrently — if any stops, USB breaks
-    join3(usb_fut, tx_fut, rx_fut).await;
+    join(usb_fut, tx_fut).await;
 }

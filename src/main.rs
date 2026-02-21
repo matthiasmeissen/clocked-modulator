@@ -18,13 +18,8 @@ mod phasor;
 mod usb;
 mod encoder;
 
-// Shared communication channels (const-constructed, no StaticCell needed)
-//
-// BPM_BUS broadcasts BPM changes to multiple subscribers.
-// PubSubChannel<Mutex, Type, capacity, max_subscribers, max_publishers>
-// - USB task publishes new BPM values
-// - Modulator task and display task each subscribe independently
-static BPM_BUS: PubSubChannel<CriticalSectionRawMutex, f32, 2, 2, 1> = PubSubChannel::new();
+
+static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
 
 // USB_TX carries fixed-size modulator output packets to the USB write task.
 // Channel depth of 4 absorbs timing jitter between modulator and USB polling.
@@ -36,7 +31,7 @@ static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = 
 // Owns the phasor directly (no mutex) so nothing can delay the tick.
 #[embassy_executor::task]
 async fn modulator_task() {
-    let mut bpm_sub = BPM_BUS.subscriber().unwrap();
+    //let mut bpm_sub = BPM_BUS.subscriber().unwrap();
     let usb_tx = USB_TX.sender();
 
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
@@ -52,9 +47,9 @@ async fn modulator_task() {
         ticker.next().await;
 
         // Non-blocking check: if USB received a new BPM, apply it
-        if let Some(bpm) = bpm_sub.try_next_message_pure() {
-            phasor.set_bpm(bpm);
-            info!("BPM updated to {}", bpm);
+        if let Ok(new_bpm) = BPM_CHANNEL.try_receive() {
+            phasor.set_bpm(new_bpm);
+            info!("BPM updated to {}", new_bpm);
         }
 
         // Advance all 4 phase accumulators (one per beat multiplier)
@@ -70,31 +65,31 @@ async fn modulator_task() {
     }
 }
 
-// Redraws at most 10Hz. Collects the latest state each frame, skips draw if nothing changed.
-#[embassy_executor::task]
-async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
-    let mut disp = display::Display::new(i2c);
-    let mut bpm_sub = BPM_BUS.subscriber().unwrap();
-    let mut ticker = Ticker::every(Duration::from_millis(100)); // 10Hz
+// // Redraws at most 10Hz. Collects the latest state each frame, skips draw if nothing changed.
+// #[embassy_executor::task]
+// async fn display_task(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) {
+//     let mut disp = display::Display::new(i2c);
+//     //let mut bpm_sub = BPM_BUS.subscriber().unwrap();
+//     let mut ticker = Ticker::every(Duration::from_millis(100)); // 10Hz
 
-    let mut current_bpm: f32 = 120.0;
-    let mut dirty = true;
+//     let mut current_bpm: f32 = 120.0;
+//     let mut dirty = true;
 
-    loop {
-        ticker.next().await;
+//     loop {
+//         ticker.next().await;
 
-        // Drain all pending BPM updates, keep only the latest
-        while let Some(bpm) = bpm_sub.try_next_message_pure() {
-            current_bpm = bpm;
-            dirty = true;
-        }
+//         // Drain all pending BPM updates, keep only the latest
+//         while let Some(bpm) = bpm_sub.try_next_message_pure() {
+//             current_bpm = bpm;
+//             dirty = true;
+//         }
 
-        if dirty {
-            disp.draw_main(current_bpm);
-            dirty = false;
-        }
-    }
-}
+//         if dirty {
+//             disp.draw_main(current_bpm);
+//             dirty = false;
+//         }
+//     }
+// }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -110,7 +105,7 @@ async fn main(spawner: Spawner) {
     let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
 
     // Start the USB task (handles enumeration, TX from USB_TX channel, RX publishes to BPM_BUS)
-    usb::init(p.USB, BPM_BUS.publisher().unwrap(), USB_TX.receiver(), spawner);
+    usb::init(p.USB, USB_TX.receiver(), spawner);
 
     encoder::init_encoder(spawner, button, pin_a, pin_b);
 
@@ -127,6 +122,7 @@ async fn main(spawner: Spawner) {
     loop {
         let event = INPUT_EVENTS.receive().await;
         nav = nav.handle(event, &mut config, &mut bpm);
+        let _ = BPM_CHANNEL.try_send(bpm as f32);
         disp.draw_main(bpm as f32);
         info!("nav bpm: {}", bpm);
     }
