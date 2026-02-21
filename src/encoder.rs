@@ -3,6 +3,25 @@ use embassy_time::{Duration, Instant, Timer};
 use embassy_rp::gpio::Input;
 use rotary_encoder_embedded::{RotaryEncoder, Direction};
 
+#[derive(Clone, Copy)]
+pub enum InputEvent {
+    Prev,
+    Next,
+    Enter,
+    Back,
+}
+
+impl defmt::Format for InputEvent {
+    fn format(&self, f: Formatter) {
+        match self {
+            InputEvent::Prev => defmt::write!(f, "Prev"),
+            InputEvent::Next => defmt::write!(f, "Next"),
+            InputEvent::Enter => defmt::write!(f, "Enter"),
+            InputEvent::Back => defmt::write!(f, "Back"),
+        }
+    }
+}
+
 pub fn init_encoder(
     spawner: embassy_executor::Spawner,
     button: Input<'static>,
