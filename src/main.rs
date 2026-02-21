@@ -55,7 +55,7 @@ async fn modulator_task() {
         phasor.tick();
         tick_count += 1;
 
-        if tick_count % 10 == 0 {
+        if tick_count % 8 == 0 {
             let packet = engine.compute_bytes(&phasor, &config);
             let _ = usb_tx.try_send(packet);
         }
