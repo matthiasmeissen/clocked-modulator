@@ -115,15 +115,19 @@ async fn main(spawner: Spawner) {
     encoder::init_encoder(spawner, button, pin_a, pin_b);
 
     spawner.spawn(modulator_task()).unwrap();
-    spawner.spawn(display_task(i2c)).unwrap();
+    //spawner.spawn(display_task(i2c)).unwrap();
 
     let mut nav = display::NavState::Browse { index: 0 };
     let mut config = modulator::ModulatorConfig::default();
     let mut bpm: u16 = 120;
 
+    let mut disp = display::Display::new(i2c);
+    disp.draw_main(bpm as f32);
+
     loop {
         let event = INPUT_EVENTS.receive().await;
         nav = nav.handle(event, &mut config, &mut bpm);
+        disp.draw_main(bpm as f32);
         info!("nav bpm: {}", bpm);
     }
 }
