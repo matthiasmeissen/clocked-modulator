@@ -36,6 +36,15 @@ impl Waveshape {
         }
     }
 
+    pub fn name(self) -> &'static str {
+        match self {
+            Waveshape::Sin => "SIN",
+            Waveshape::Tri => "TRI",
+            Waveshape::Squ => "SQU",
+            Waveshape::Saw => "SAW",
+        }
+    }
+
     //* Normalized values between 0.0 and 1.0 */
     pub fn compute_from_phasor(self, phase: f32) -> f32 {
         match self {
