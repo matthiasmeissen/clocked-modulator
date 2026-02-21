@@ -30,6 +30,8 @@ static BPM_BUS: PubSubChannel<CriticalSectionRawMutex, f32, 2, 2, 1> = PubSubCha
 // Channel depth of 4 absorbs timing jitter between modulator and USB polling.
 static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 4> = Channel::new();
 
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = Channel::new();
+
 // Timing-critical task: ticks the phasor at 1kHz, computes and sends modulator output at 100Hz.
 // Owns the phasor directly (no mutex) so nothing can delay the tick.
 #[embassy_executor::task]

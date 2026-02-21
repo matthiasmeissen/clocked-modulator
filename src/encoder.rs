@@ -3,6 +3,8 @@ use embassy_time::{Duration, Instant, Timer};
 use embassy_rp::gpio::Input;
 use rotary_encoder_embedded::{RotaryEncoder, Direction};
 
+use crate::INPUT_EVENTS;
+
 #[derive(Clone, Copy)]
 pub enum InputEvent {
     Prev,
@@ -62,10 +64,12 @@ async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>) {
         Timer::after(Duration::from_millis(1)).await;
         match encoder.update() {
             Direction::Clockwise => {
+                let _ = INPUT_EVENTS.try_send(InputEvent::Next);
                 position += 1;
                 info!("CW  → Position: {}", position);
             }
             Direction::Anticlockwise => {
+                let _ = INPUT_EVENTS.try_send(InputEvent::Prev);
                 position -= 1;
                 info!("CCW → Position: {}", position);
             }
