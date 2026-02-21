@@ -44,13 +44,20 @@ async fn button_task(mut button: Input<'static>) {
 
         if button.is_low() {
             let press_start = Instant::now();
-            info!("Button pressed!");
+            // info!("Button pressed!");
 
             button.wait_for_high().await;
             Timer::after(debounce).await;
 
             let held_ms = press_start.elapsed().as_millis();
-            info!("Button released (held {}ms)", held_ms);
+
+            if held_ms <= 500 {
+                let _ = INPUT_EVENTS.try_send(InputEvent::Enter);
+            } else {
+                let _ = INPUT_EVENTS.try_send(InputEvent::Back);
+            }
+
+            // info!("Button released (held {}ms)", held_ms);
         }
     }
 }
@@ -65,13 +72,13 @@ async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>) {
         match encoder.update() {
             Direction::Clockwise => {
                 let _ = INPUT_EVENTS.try_send(InputEvent::Next);
-                position += 1;
-                info!("CW  → Position: {}", position);
+                // position += 1;
+                // info!("CW  → Position: {}", position);
             }
             Direction::Anticlockwise => {
                 let _ = INPUT_EVENTS.try_send(InputEvent::Prev);
-                position -= 1;
-                info!("CCW → Position: {}", position);
+                // position -= 1;
+                // info!("CCW → Position: {}", position);
             }
             Direction::None => {}
         }

@@ -118,4 +118,9 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(modulator_task()).unwrap();
     spawner.spawn(display_task(i2c)).unwrap();
+
+    loop {
+        let event = INPUT_EVENTS.receive().await;
+        info!("{}", event);
+    }
 }
