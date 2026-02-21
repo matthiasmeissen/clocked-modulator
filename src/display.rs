@@ -32,7 +32,7 @@ pub enum SlotParam {
 #[derive(Clone, Copy)]
 pub enum NavState {
     Browse { index: u8 },
-    EditBpm,
+    EditBpm { draft: u16 },
     SlotFocus { slot: u8, param: SlotParam },
     SlotEdit { slot: u8, param: SlotParam },
 }
@@ -41,18 +41,20 @@ impl NavState {
     pub fn handle(self, event: InputEvent, config: &mut ModulatorConfig, bpm: &mut u16) -> Self {
         match (self, event) {
             (Self::Browse { index: 0 }, InputEvent::Enter) => {
-                NavState::EditBpm
+                NavState::EditBpm { draft: *bpm }
             }
             // Edit BPM
-            (Self::EditBpm, InputEvent::Next) => {
-                *bpm = (*bpm + 1).min(300);
-                NavState::EditBpm
+            (Self::EditBpm { draft }, InputEvent::Next) => {
+                NavState::EditBpm { draft: (draft + 1).min(300)}
             }
-            (Self::EditBpm, InputEvent::Prev) => {
-                *bpm = bpm.saturating_sub(1).max(20);
-                NavState::EditBpm
+            (Self::EditBpm { draft }, InputEvent::Prev) => {
+                NavState::EditBpm { draft: draft.saturating_sub(1).max(20)}
             }
-            (Self::EditBpm, InputEvent::Enter | InputEvent::Back) => {
+            (Self::EditBpm { draft }, InputEvent::Enter) => {
+                *bpm = draft;
+                NavState::Browse { index: 0 }
+            }
+            (Self::EditBpm { .. }, InputEvent::Back) => {
                 NavState::Browse { index: 0 }
             }
             _ => self
@@ -87,7 +89,7 @@ impl Display {
 
         match nav {
             NavState::Browse { index: 0 } => self.draw_bpm(bpm, UiState::Hover),
-            NavState::EditBpm => self.draw_bpm(bpm, UiState::Active),
+            NavState::EditBpm { draft } => self.draw_bpm(*draft as f32, UiState::Active),
             _ => self.draw_bpm(bpm, UiState::Default),
         }
         
