@@ -31,7 +31,7 @@ static CDC_STATE: StaticCell<State> = StaticCell::new();
 /// - `tx_recv`: receives modulator packets from USB_TX channel
 pub fn init(
     usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>,
-    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
+    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 8>,
     spawner: embassy_executor::Spawner,
 ) {
     let driver = Driver::new(usb, Irqs);
@@ -67,7 +67,7 @@ pub fn init(
 async fn usb_task(
     mut usb: embassy_usb::UsbDevice<'static, Driver<'static, USB>>,
     class: CdcAcmClass<'static, Driver<'static, USB>>,
-    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 4>,
+    tx_recv: Receiver<'static, CriticalSectionRawMutex, [u8; PACKET_SIZE], 8>,
 ) {
     let (mut tx, mut rx) = class.split();
 
