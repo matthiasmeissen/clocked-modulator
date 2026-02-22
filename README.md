@@ -9,3 +9,4 @@ A clocked modulation source build on embedded hardware.
 - [pico 2 template](https://github.com/ImplFerris/pico2-template/tree/main)
 - [rp235x hal examples](https://github.com/rp-rs/rp-hal/tree/main/rp235x-hal-examples)
 - [embassy rp235x examples](https://github.com/embassy-rs/embassy/tree/main/examples/rp235x)
+- [Pico 2 Pinout](https://www.raspberrypi.com/documentation/microcontrollers/images/pico-2-r4-pinout.svg)
