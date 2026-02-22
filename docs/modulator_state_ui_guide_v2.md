@@ -1,5 +1,9 @@
 # Clocked Modulator UI v2 — State Machine
 
+## Diagram
+
+![Interface Diagram](clocked_modulator_interface_v2.svg)
+
 ## Hardware Controls
 
 ```
@@ -451,3 +455,76 @@ if matches!(nav, NavState::TapMode) && matches!(event, InputEvent::B3Press) {
     last_tap = Some(Instant::now());
 }
 ```
+
+
+## Implementation Plan
+
+Phases 1–4 work with the existing single encoder. Phase 5 adds new hardware.
+
+### Phase 1: Data Model — 4 Slots with Min/Max
+
+**Files:** `src/modulator.rs`, `src/main.rs`
+
+- `ModSlot`: add `pub min: f32` and `pub max: f32` fields, default `0.0` / `1.0`
+- Add `Default` impl for `ModSlot`
+- Add remap in `ModSlot::output()`: `min + raw_value * (max - min)`
+- Min > max is allowed (inverts the waveform)
+- Change `NUM_MODULATORS` from 8 to 4, `PACKET_SIZE` becomes `2 + 4*4 = 18`
+- Update `ModulatorConfig::default()` to 4 slots
+- `USB_TX` channel type auto-updates via `PACKET_SIZE`
+
+**Test:** Flash, verify 4 output values over USB.
+
+### Phase 2: New InputEvent and NavState
+
+**Files:** `src/encoder.rs`, `src/display.rs`
+
+- Replace `InputEvent` enum with: `Enc1Rotate(i8)`, `Enc2Rotate(i8)`, `B1Press`..`B6Press`
+- Temporary mapping: encoder → `Enc1Rotate(±1)`, short press → `B1Press`, long press → `B2Press`
+- Replace NavState with: `Overview`, `TapMode`, `ModEdit { slot, page, draft }`
+- Add `SlotId`, `EditPage`, `PlaybackState` types
+- Implement full `NavState::handle()` transition function from spec above
+
+**Test:** Encoder rotates BPM in Overview. B1Press enters TapMode. B2Press returns to Overview.
+
+### Phase 3: New Channels and ui_task
+
+**Files:** `src/main.rs`
+
+- Add `CONFIG_CHANNEL`, `PLAYBACK_CHANNEL`, `BEAT_TICK` channels
+- Replace `input_task` with `ui_task` owning `AppState { nav, bpm, config, playback, bar_beat }`
+- Use `select` to await `INPUT_EVENTS` or `BEAT_TICK`
+- Update `modulator_task`: receive config/playback, send beat ticks
+- Update `DisplayState` to carry full render info
+
+**Test:** Verify BPM propagates. Verify beat ticks arrive (defmt logs).
+
+### Phase 4: Display Pages
+
+**Files:** `src/display.rs`
+
+- `draw_overview()`: BPM + 4 slot summaries + beat indicator
+- `draw_tap_mode()`: Large BPM, playback state, button labels
+- `draw_mod_edit()`: Slot label, Waves or Range page, page indicator
+- Dispatch by matching on `NavState` variant
+
+**Test:** Navigate Overview ↔ TapMode with existing encoder.
+
+### Phase 5: Second Encoder and Buttons (New Hardware)
+
+**Files:** `src/encoder.rs`, `src/main.rs`
+
+- Pin assignments TBD when hardware is ready
+- Add `encoder2_task`, button tasks for B2–B6
+- Replace `init_encoder()` with `init_inputs()`
+- Remove temporary long-press mapping
+
+**Test:** Full integration — all pages, all slots, tap tempo, pause/resume.
+
+### Phase 6: Tap Tempo and Playback Polish
+
+**Files:** `src/main.rs` (inside `ui_task`)
+
+- Tap tempo: track `last_tap`, compute BPM from B3Press intervals
+- Playback pause: modulator stops ticking phasor
+- Bar reset: reset phasor phases to 0
