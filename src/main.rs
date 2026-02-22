@@ -1,154 +1,129 @@
-
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
-use cortex_m::{self, asm, interrupt::Mutex};
-use embedded_hal::digital::OutputPin;
-use rp235x_hal as hal;
-use hal::timer::{Alarm, Instant};
-use hal::pac::interrupt;
-use hal::fugit::MicrosDurationU32;
-use panic_halt as _;
-use defmt_rtt as _;
-use defmt;
+use defmt::*;
+use embassy_executor::Executor;
+use embassy_rp::i2c;
+use embassy_rp::gpio::{Input, Pull};
+use embassy_rp::multicore::{Stack, spawn_core1};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
+use embassy_time::{Duration, Ticker};
+use static_cell::StaticCell;
+use {defmt_rtt as _, panic_probe as _};
 
-use crate::board::Board;
-
-mod phasor;
-mod modulator;
-mod board;
 mod display;
+mod modulator;
+mod phasor;
+mod usb;
+mod encoder;
 
-#[unsafe(link_section = ".start_block")]
-#[used]
-pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
+static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
+static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = Channel::new();
+static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
 
-// 1kHz = 1000 microseconds
-pub const TICK_INTERVAL: MicrosDurationU32 = MicrosDurationU32::micros(1000);
+static mut CORE1_STACK: Stack<16384> = Stack::new();
+static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-pub type AlarmType = hal::timer::Alarm0<hal::timer::CopyableTimer0>;
-
-struct SharedState {
-    alarm: AlarmType,
-    next_fire: u64,
-    phasor: phasor::PhasorBank,
-    mod_config: modulator::ModulatorConfig,
+#[derive(Clone, Copy)]
+struct DisplayState {
+    bpm: u16,
+    nav: display::NavState,
 }
 
-static SHARED_STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
+#[embassy_executor::task]
+async fn modulator_task() {
+    let usb_tx = USB_TX.sender();
 
-#[interrupt]
-fn TIMER0_IRQ_0() {
-    cortex_m::interrupt::free(|cs| {
-        if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-            state.alarm.clear_interrupt();
+    let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
+    let config = modulator::ModulatorConfig::default();
+    let engine = modulator::ModulatorEngine;
 
-            state.phasor.tick();
-
-            let next = state.next_fire + TICK_INTERVAL.ticks() as u64;
-            state.next_fire = next;
-            let _ = state.alarm.schedule_at(Instant::from_ticks(next));
-        }
-    })
-}
-
-#[hal::entry]
-fn main() -> ! {
-    let mut board = Board::init();
-
-    let tick_rate_hz = 1_000_000.0 / TICK_INTERVAL.ticks() as f32;
-
-    let phasor = phasor::PhasorBank::new(120.0, tick_rate_hz);
-    let mod_engine = modulator::ModulatorEngine;
-    let mod_config = modulator::ModulatorConfig::default();
-
-    let mut alarm: crate::AlarmType = board.timer.alarm_0().unwrap();
-    let first_fire: rp235x_hal::fugit::Instant<u64, 1, 1000000> = board.timer.get_counter() + crate::TICK_INTERVAL;
-    alarm.schedule_at(first_fire).unwrap();
-    alarm.enable_interrupt();
-
-    cortex_m::interrupt::free(|cs| {
-        SHARED_STATE.borrow(cs).replace(Some(SharedState { 
-            alarm, 
-            next_fire: first_fire.ticks(),
-            phasor,
-            mod_config,
-        }));
-    });
-
-    unsafe { cortex_m::peripheral::NVIC::unmask(hal::pac::Interrupt::TIMER0_IRQ_0) };
-    cortex_m::peripheral::NVIC::unpend(hal::pac::Interrupt::TIMER0_IRQ_0);
-
-    let mut display = display::init(board.i2c);
-
-    let mut led_pin = board.led_pin;
-    led_pin.set_high().unwrap();
+    let mut ticker = Ticker::every(Duration::from_micros(1000));
+    let mut tick_count: u32 = 0;
 
     loop {
-        // USB poll data
-        let mut new_bpm = None;
-        let mut current_bpm = 120.0;
+        ticker.next().await;
 
-        if board.usb_device.poll(&mut [&mut board.serial]) {
-             let mut buf = [0u8; 64];
-
-             if let Ok(count) = board.serial.read(&mut buf) {
-                let mut i = 0;
-                // Keep looping while we have at least 5 bytes remaining (1 Header + 4 Float)
-                while i + 5 <= count {
-                    // Check for the 'B' Header
-                    if buf[i] == b'B' {                        
-                        // 1. Grab the 4 bytes representing the float
-                        let bytes = [buf[i+1], buf[i+2], buf[i+3], buf[i+4]];
-                        // 2. Convert bytes to float (Standard Rust function)
-                        new_bpm = Some(f32::from_le_bytes(bytes));
-
-                        // 4. Important: Jump forward 5 bytes so we don't read the same data again
-                        i += 5;
-                        
-                    } else {
-                        // If it wasn't 'B', move 1 byte forward and try again
-                        i += 1;
-                    }
-                }
-            }
+        if let Ok(new_bpm) = BPM_CHANNEL.try_receive() {
+            phasor.set_bpm(new_bpm);
+            info!("BPM updated to {}", new_bpm);
         }
 
-        if let Some(bpm) = new_bpm {
-            cortex_m::interrupt::free(|cs| {
-                if let Some(state) = SHARED_STATE.borrow(cs).borrow_mut().as_mut() {
-                    state.phasor.set_bpm(bpm);
-                    current_bpm = bpm;
-                }
+        phasor.tick();
+        tick_count += 1;
+
+        if tick_count % 8 == 0 {
+            let packet = engine.compute_bytes(&phasor, &config);
+            let _ = usb_tx.try_send(packet);
+        }
+    }
+}
+
+// Runs on Core 1. Redraws display whenever Core 0 sends new state.
+// Blocking I2C writes here can never delay modulator or USB on Core 0.
+#[embassy_executor::task]
+async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Blocking>) {
+    let mut disp = display::Display::new(i2c);
+
+    let mut state = DisplayState { bpm: 120, nav: display::NavState::Browse { index: 0 } };
+    disp.draw_main(state.bpm as f32, &state.nav);
+
+    loop {
+        state = DISPLAY_UPDATE.receive().await;
+        disp.draw_main(state.bpm as f32, &state.nav);
+    }
+}
+
+#[cortex_m_rt::entry]
+fn main() -> ! {
+    let p = embassy_rp::init(Default::default());
+
+    // Encoder pins (Core 0)
+    let pin_a = Input::new(p.PIN_14, Pull::Up);
+    let pin_b = Input::new(p.PIN_15, Pull::Up);
+    let button = Input::new(p.PIN_18, Pull::Up);
+
+    // Display I2C — moves to Core 1
+    let mut i2c_config = i2c::Config::default();
+    i2c_config.frequency = 400_000;
+    let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
+
+    // Core 1: display only — runs its own executor so I2C can't block Core 0
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || {
+            let executor1 = EXECUTOR1.init(Executor::new());
+            executor1.run(|spawner| {
+                spawner.spawn(display_task(i2c)).unwrap();
             });
-            
-            defmt::info!("Received BPM: {}", bpm);
-        }
+        },
+    );
 
-        // Copy phasor and config out of the critical section
-        let (phasor, config) = cortex_m::interrupt::free(|cs| {
-            let state = SHARED_STATE.borrow(cs).borrow();
-            let state = state.as_ref().unwrap();
-            (state.phasor, state.mod_config)
-        });
+    // Core 0: modulator, USB, encoder, button, input handling
+    let executor0 = EXECUTOR0.init(Executor::new());
+    executor0.run(|spawner| {
+        usb::init(p.USB, USB_TX.receiver(), spawner);
+        encoder::init_encoder(spawner, button, pin_a, pin_b);
+        spawner.spawn(modulator_task()).unwrap();
+        spawner.spawn(input_task()).unwrap();
+    });
+}
 
-        let values = mod_engine.compute(phasor, &config);
-        let tx_buffer = mod_engine.compute_bytes(phasor, &config);
+// Handles input events and sends display updates to Core 1.
+#[embassy_executor::task]
+async fn input_task() {
+    let mut nav = display::NavState::Browse { index: 0 };
+    let mut config = modulator::ModulatorConfig::default();
+    let mut bpm: u16 = 120;
 
-        display::draw_screen(&mut display, values, current_bpm);
-
-        // Send data bytes over USB with delay
-        cortex_m::asm::delay(12_000_000 / 100);
-        let _ = board.serial.write(&tx_buffer);
-
-        if values[3] > 0.5 {
-            led_pin.set_high().unwrap();
-        } else {
-            led_pin.set_low().unwrap();
-        }
-        //defmt::info!("{}", modulator::Visualizer4(values));
-
-        // asm::wfi();
+    loop {
+        let event = INPUT_EVENTS.receive().await;
+        nav = nav.handle(event, &mut config, &mut bpm);
+        let _ = BPM_CHANNEL.try_send(bpm as f32);
+        let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav });
     }
 }

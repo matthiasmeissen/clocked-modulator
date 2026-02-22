@@ -1,66 +1,184 @@
-
-use core::fmt::Write;
-use heapless::String;
 use embedded_graphics::{
-    Drawable, mono_font::{MonoTextStyleBuilder, ascii::FONT_6X10}, pixelcolor::BinaryColor, prelude::{DrawTarget, Point, Primitive, Size}, primitives::{PrimitiveStyle, Rectangle}, text::Text
+    mono_font::{MonoTextStyle, ascii::FONT_6X10},
+    pixelcolor::BinaryColor,
+    prelude::*,
+    primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
+    text::{Baseline, Text, TextStyleBuilder},
 };
+use embassy_rp::i2c;
+use embassy_rp::peripherals::I2C0;
+use sh1106::{interface::I2cInterface, prelude::*, Builder};
 
-use sh1106::{prelude::*, Builder, interface::I2cInterface};
+use crate::{encoder::InputEvent, modulator::ModulatorConfig};
 
-pub type Display = GraphicsMode<I2cInterface<crate::board::I2CType>>;
+type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
-pub fn init(i2c: crate::board::I2CType) -> Display {
-    let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
+const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+const CHARACTER_STYLE_INVERT: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
+const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
+const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
 
-    display.init().unwrap();
-    display.flush().unwrap();
 
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
+// ------------------------------
+// State Machine
+// ------------------------------
 
-    Text::new("Test", Point::new(20, 20), text_style)
-        .draw(&mut display)
-        .unwrap();
-
-    display.flush().unwrap();
-
-    display
+#[derive(Clone, Copy)]
+pub enum SlotParam {
+    Wave,
+    Mul,
 }
 
-pub fn draw_screen(display: &mut Display, values: [f32; 4], bpm: f32) {
-    display.clear();
-
-    draw_bpm(display, bpm);
-
-    draw_bar(display, values[0], 25);
-    draw_bar(display, values[1], 35);
-    draw_bar(display, values[2], 45);
-    draw_bar(display, values[3], 55);
-
-    let _ = display.flush();
+#[derive(Clone, Copy)]
+pub enum NavState {
+    Browse { index: u8 },
+    EditBpm { draft: u16 },
+    SlotFocus { slot: u8, param: SlotParam },
+    SlotEdit { slot: u8, param: SlotParam },
 }
 
-pub fn draw_bpm(display: &mut Display, value: f32) {
-    let mut buf: String<16> = String::new();
-    write!(buf, "{:.0}", value).unwrap();
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
-
-    Text::new(&buf, Point::new(0, 20), text_style)
-        .draw(display)
-        .unwrap();
+impl NavState {
+    pub fn handle(self, event: InputEvent, config: &mut ModulatorConfig, bpm: &mut u16) -> Self {
+        match (self, event) {
+            (Self::Browse { index: 0 }, InputEvent::Enter) => {
+                NavState::EditBpm { draft: *bpm }
+            }
+            // Edit BPM
+            (Self::EditBpm { draft }, InputEvent::Next) => {
+                NavState::EditBpm { draft: (draft + 1).min(300)}
+            }
+            (Self::EditBpm { draft }, InputEvent::Prev) => {
+                NavState::EditBpm { draft: draft.saturating_sub(1).max(20)}
+            }
+            (Self::EditBpm { draft }, InputEvent::Enter) => {
+                *bpm = draft;
+                NavState::Browse { index: 0 }
+            }
+            (Self::EditBpm { .. }, InputEvent::Back) => {
+                NavState::Browse { index: 0 }
+            }
+            _ => self
+        }
+    }
 }
 
-pub fn draw_bar(display: &mut Display, value: f32, pos_y: i32) {
-    let bar_width = (value * 128.0) as u32;
 
-    let style = PrimitiveStyle::with_fill(BinaryColor::On);
-    let _ = Rectangle::new(
-        Point::new(0, pos_y),
-        Size::new(bar_width, 5)
-    ).into_styled(style).draw(display).unwrap();
+// ------------------------------
+// Display and UI
+// ------------------------------
+
+enum UiState {
+    Default,
+    Hover,
+    Active,
+}
+
+pub struct Display {
+    driver: Driver,
+}
+
+impl Display {
+    pub fn new(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) -> Self {
+        let mut driver: Driver = Builder::new().connect_i2c(i2c).into();
+        driver.init().expect("Display init failed");
+        Self { driver }
+    }
+
+    pub fn draw_main(&mut self, bpm: f32, nav: &NavState) {
+        self.driver.clear();
+
+        match nav {
+            NavState::Browse { index: 0 } => self.draw_bpm(bpm, UiState::Hover),
+            NavState::EditBpm { draft } => self.draw_bpm(*draft as f32, UiState::Active),
+            _ => self.draw_bpm(bpm, UiState::Default),
+        }
+        
+        self.draw_modulator(Point::new(0, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(30, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(60, 12), "SIN", "X2");
+        self.draw_modulator(Point::new(90, 12), "SIN", "X2");
+
+        self.draw_modulator(Point::new(0, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(30, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(60, 36), "SAW", "D4");
+        self.draw_modulator(Point::new(90, 36), "SAW", "D4");
+        
+        self.driver.flush().ok();
+    }
+
+    fn draw_bpm(&mut self, bpm: f32, state: UiState) {
+        let bpm_int = bpm.clamp(0.0, 999.0) as u16;
+        let buf = format_u16(bpm_int);
+        let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
+
+        match state {
+            UiState::Default => {
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+                .draw(&mut self.driver)
+                .ok();
+            },
+            UiState::Hover => {
+                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
+                    .into_styled(BORDER_STYLE)
+                    .draw(&mut self.driver).ok();
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+                    .draw(&mut self.driver)
+                    .ok();
+            }
+            UiState::Active => {
+                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
+                    .into_styled(FILL_STYLE)
+                    .draw(&mut self.driver).ok();
+                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE_INVERT, Baseline::Top)
+                    .draw(&mut self.driver)
+                    .ok();
+            }
+        }
+    }
+
+    fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
+        Rectangle::new(pos, Size::new(28, 22))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+
+        Text::with_baseline(wave, Point::new(pos.x + 2, pos.y + 1), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
+
+        Text::with_baseline(mul, Point::new(pos.x + 2, pos.y + 12), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
+    }
+
+    pub fn draw_bars(&mut self, values: &[f32; 4]) {
+        self.driver.clear();
+
+        for (i, &value) in values.iter().enumerate() {
+            let y = 25 + i as i32 * 10;
+            let width = (value * 128.0) as u32;
+            Rectangle::new(Point::new(0, y), Size::new(width, 5))
+                .into_styled(FILL_STYLE)
+                .draw(&mut self.driver)
+                .ok();
+        }
+
+        self.driver.flush().ok();
+    }
+}
+
+/// Integer-to-string without fmt machinery. Returns (buffer, length).
+fn format_u16(mut n: u16) -> ([u8; 4], usize) {
+    let mut buf = [0u8; 4];
+    if n == 0 {
+        buf[0] = b'0';
+        return (buf, 1);
+    }
+    let mut i = 4;
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    let len = 4 - i;
+    // Shift to start of buffer
+    buf.copy_within(i..4, 0);
+    (buf, len)
 }
