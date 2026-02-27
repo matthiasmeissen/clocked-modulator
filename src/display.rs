@@ -129,7 +129,7 @@ impl Display {
 
         match nav {
             NavState::Overview => self.draw_screen_overview(bpm),
-            NavState::TapMode => self.draw_screen_tapmode(),
+            NavState::TapMode => self.draw_screen_tapmode(bpm),
             _ => self.draw_screen_overview(bpm),
         }
 
@@ -146,8 +146,14 @@ impl Display {
         self.draw_element_text(get_slot_position(8), "D", true);
     }
 
-    fn draw_screen_tapmode(&mut self) {
+    fn draw_screen_tapmode(&mut self, bpm: f32) {
         self.draw_element_text(get_slot_position(1), "Tap", false);
+        self.draw_element_bpm(get_slot_position(2), bpm);
+        self.draw_element_text(get_slot_position(3), "Up", true);
+        self.draw_element_text(get_slot_position(4), "Tap", true);
+        self.draw_element_text(get_slot_position(6), "TEMP", true);
+        self.draw_element_text(get_slot_position(7), "PAUS", true);
+        self.draw_element_text(get_slot_position(8), "PLAY", true);
     }
 
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
