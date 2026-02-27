@@ -104,6 +104,7 @@ impl NavState {
                 Overview
             }
             (Overview, B1Press) => TapMode,
+            (Overview, B2Press) => ModEdit { slot: SlotId::A, page: EditPage::Waves, draft: ModSlot::default() },
             _ => Overview,
         }
     }
@@ -130,7 +131,7 @@ impl Display {
         match nav {
             NavState::Overview => self.draw_screen_overview(bpm),
             NavState::TapMode => self.draw_screen_tapmode(bpm),
-            _ => self.draw_screen_overview(bpm),
+            _ => self.draw_screen_modedit(1),
         }
 
         self.driver.flush().ok();
@@ -154,6 +155,18 @@ impl Display {
         self.draw_element_text(get_slot_position(6), "TEMP", true);
         self.draw_element_text(get_slot_position(7), "PAUS", true);
         self.draw_element_text(get_slot_position(8), "PLAY", true);
+    }
+
+    fn draw_screen_modedit(&mut self, slot: usize) {
+        self.draw_element_text(get_slot_position(1), "A", false);
+        
+        self.draw_element_values(get_slot_position(2), "Wave", "SIN");
+        self.draw_element_text(get_slot_position(3), "Up", true);
+        self.draw_element_text(get_slot_position(4), "Res", true);
+
+        self.draw_element_values(get_slot_position(6), "Mult", "X2");
+        self.draw_element_text(get_slot_position(7), "Ok", true);
+        self.draw_element_text(get_slot_position(8), "Rng", true);
     }
 
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
@@ -181,7 +194,7 @@ impl Display {
         Text::with_baseline(label, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
             .draw(&mut self.driver).ok();
 
-        Text::with_baseline(value, Point::new(point.x + 3, point.y + 20), CHARACTER_STYLE, Baseline::Top)
+        Text::with_baseline(value, Point::new(point.x + 3, point.y + 19), CHARACTER_STYLE, Baseline::Top)
             .draw(&mut self.driver).ok();
 
         self.draw_element_outline(point);
