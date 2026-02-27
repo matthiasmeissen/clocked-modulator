@@ -1,3 +1,5 @@
+use embassy_rp::{i2c, interrupt::typelevel};
+use embassy_rp::peripherals::I2C0;
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_6X10},
     pixelcolor::BinaryColor,
@@ -5,19 +7,20 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
     text::{Baseline, Text, TextStyleBuilder},
 };
-use embassy_rp::i2c;
-use embassy_rp::peripherals::I2C0;
-use sh1106::{interface::I2cInterface, prelude::*, Builder};
+use sh1106::{Builder, interface::I2cInterface, prelude::*};
 
-use crate::{encoder::InputEvent, modulator::{ModSlot, ModulatorConfig}};
+use crate::{
+    encoder::InputEvent,
+    modulator::{ModSlot, ModulatorConfig},
+};
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-const CHARACTER_STYLE_INVERT: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
+const CHARACTER_STYLE_INVERT: MonoTextStyle<BinaryColor> =
+    MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
 const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-
 
 // ------------------------------
 // State Machine
@@ -25,7 +28,10 @@ const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(Bi
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SlotId {
-    A, B, C, D,
+    A,
+    B,
+    C,
+    D,
 }
 
 impl SlotId {
@@ -50,7 +56,8 @@ impl SlotId {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum EditPage {
-    Waves, Range,
+    Waves,
+    Range,
 }
 
 impl EditPage {
@@ -64,22 +71,30 @@ impl EditPage {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum PlaybackState {
-    Playing, Paused,
+    Playing,
+    Paused,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum NavState {
     Overview,
     TapMode,
-    ModEdit { 
-        slot: SlotId, 
-        page: EditPage, 
-        draft: ModSlot 
+    ModEdit {
+        slot: SlotId,
+        page: EditPage,
+        draft: ModSlot,
     },
 }
 
 impl NavState {
-    pub fn handle(self, event: InputEvent, bpm: &mut u16, config: &mut ModulatorConfig, playback: &mut PlaybackState, rest_bar: &mut bool) -> Self {
+    pub fn handle(
+        self,
+        event: InputEvent,
+        bpm: &mut u16,
+        config: &mut ModulatorConfig,
+        playback: &mut PlaybackState,
+        rest_bar: &mut bool,
+    ) -> Self {
         use InputEvent::*;
         use NavState::*;
         match (self, event) {
@@ -87,13 +102,12 @@ impl NavState {
             (Overview, Enc1Rotate(delta)) => {
                 *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
                 Overview
-            },
+            }
             (Overview, B1Press) => TapMode,
-            _ => Overview
+            _ => Overview,
         }
     }
 }
-
 
 // ------------------------------
 // Display and UI
@@ -114,74 +128,80 @@ impl Display {
         self.driver.clear();
 
         match nav {
-            NavState::Overview => self.draw_overview(bpm),
-            NavState::TapMode => self.draw_tapmode(),
-            _ => self.draw_overview(bpm),
+            NavState::Overview => self.draw_screen_overview(bpm),
+            NavState::TapMode => self.draw_screen_tapmode(),
+            _ => self.draw_screen_overview(bpm),
         }
-        
+
         self.driver.flush().ok();
     }
 
-    fn draw_overview(&mut self, bpm: f32) {
+    fn draw_screen_overview(&mut self, bpm: f32) {
+        self.draw_element_text(get_slot_position(1), "Main", false);
+        self.draw_element_bpm(get_slot_position(2), bpm);
+        self.draw_element_text(get_slot_position(3), "A", true);
+        self.draw_element_text(get_slot_position(4), "B", true);
+        self.draw_element_text(get_slot_position(6), "TEMP", true);
+        self.draw_element_text(get_slot_position(7), "C", true);
+        self.draw_element_text(get_slot_position(8), "D", true);
+    }
+
+    fn draw_screen_tapmode(&mut self) {
+        self.draw_element_text(get_slot_position(1), "Tap", false);
+    }
+
+    fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
-        .draw(&mut self.driver)
-        .ok();
+        Text::with_baseline(s, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver)
+            .ok();
 
-        self.draw_grid_element(2);
-        self.draw_grid_element(3);
-        self.draw_grid_element(4);
-        self.draw_grid_element(6);
-        self.draw_grid_element(7);
-        self.draw_grid_element(8);
+        self.draw_element_outline(point);
     }
 
-    fn draw_tapmode(&mut self) {
-        Text::with_baseline("Tap", Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
-        .draw(&mut self.driver)
-        .ok();
+    fn draw_element_text(&mut self, point: Point, text: &'static str, border: bool) {
+        Text::with_baseline(text, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver)
+            .ok();
 
-        self.draw_grid_element(2);
-        self.draw_grid_element(3);
-        self.draw_grid_element(4);
-        self.draw_grid_element(6);
-        self.draw_grid_element(7);
-        self.draw_grid_element(8);
+        if border {
+            self.draw_element_outline(point);
+        }
     }
 
-    fn draw_grid_element(&mut self, slot: usize) {
-        // 128 x 64
-        // Cell is 30 x 30
-        let point = match slot {
-            1 => Point::new(0, 0),
-            2 => Point::new(32, 0),
-            3 => Point::new(64, 0),
-            4 => Point::new(96, 0),
-            5 => Point::new(0, 32),
-            6 => Point::new(32, 32),
-            7 => Point::new(64, 32),
-            8 => Point::new(96, 32),
-            _ => Point::new(0, 0),
-        };
-
+    fn draw_element_outline(&mut self, point: Point) {
         Rectangle::new(point, Size::new(30, 30))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
     }
 
     fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
         Rectangle::new(pos, Size::new(28, 22))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
 
-        Text::with_baseline(wave, Point::new(pos.x + 2, pos.y + 1), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver).ok();
+        Text::with_baseline(
+            wave,
+            Point::new(pos.x + 2, pos.y + 1),
+            CHARACTER_STYLE,
+            Baseline::Top,
+        )
+        .draw(&mut self.driver)
+        .ok();
 
-        Text::with_baseline(mul, Point::new(pos.x + 2, pos.y + 12), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver).ok();
+        Text::with_baseline(
+            mul,
+            Point::new(pos.x + 2, pos.y + 12),
+            CHARACTER_STYLE,
+            Baseline::Top,
+        )
+        .draw(&mut self.driver)
+        .ok();
     }
 
     pub fn draw_bars(&mut self, values: &[f32; 4]) {
@@ -197,6 +217,20 @@ impl Display {
         }
 
         self.driver.flush().ok();
+    }
+}
+
+fn get_slot_position(slot: usize) -> Point {
+    match slot {
+        1 => Point::new(0, 0),
+        2 => Point::new(32, 0),
+        3 => Point::new(64, 0),
+        4 => Point::new(96, 0),
+        5 => Point::new(0, 32),
+        6 => Point::new(32, 32),
+        7 => Point::new(64, 32),
+        8 => Point::new(96, 32),
+        _ => Point::new(0, 0),
     }
 }
 
