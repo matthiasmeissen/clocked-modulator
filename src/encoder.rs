@@ -80,7 +80,7 @@ async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>) {
                 let _ = INPUT_EVENTS.try_send(InputEvent::Enc1Rotate(1));
             }
             Direction::Anticlockwise => {
-                let _ = INPUT_EVENTS.try_send(InputEvent::Enc2Rotate(-1));
+                let _ = INPUT_EVENTS.try_send(InputEvent::Enc1Rotate(-1));
             }
             Direction::None => {}
         }

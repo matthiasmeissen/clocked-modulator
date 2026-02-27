@@ -56,7 +56,7 @@ impl Waveshape {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct ModSlot {
     pub mul: Multiplier,
     pub wave: Waveshape,

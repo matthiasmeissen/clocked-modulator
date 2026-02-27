@@ -9,7 +9,7 @@ use embassy_rp::i2c;
 use embassy_rp::peripherals::I2C0;
 use sh1106::{interface::I2cInterface, prelude::*, Builder};
 
-use crate::{encoder::InputEvent, modulator::ModulatorConfig};
+use crate::{encoder::InputEvent, modulator::{ModSlot, ModulatorConfig}};
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
@@ -23,41 +23,73 @@ const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(Bi
 // State Machine
 // ------------------------------
 
-#[derive(Clone, Copy)]
-pub enum SlotParam {
-    Wave,
-    Mul,
+#[derive(Clone, Copy, PartialEq)]
+pub enum SlotId {
+    A, B, C, D,
 }
 
-#[derive(Clone, Copy)]
+impl SlotId {
+    fn index(self) -> usize {
+        match self {
+            Self::A => 0,
+            Self::B => 1,
+            Self::C => 2,
+            Self::D => 3,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::A => "Slot A",
+            Self::B => "Slot B",
+            Self::C => "Slot C",
+            Self::D => "Slot D",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum EditPage {
+    Waves, Range,
+}
+
+impl EditPage {
+    fn toggle(self) -> Self {
+        match self {
+            EditPage::Waves => EditPage::Range,
+            EditPage::Range => EditPage::Waves,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum PlaybackState {
+    Playing, Paused,
+}
+
+#[derive(Clone, Copy, PartialEq)]
 pub enum NavState {
-    Browse { index: u8 },
-    EditBpm { draft: u16 },
-    SlotFocus { slot: u8, param: SlotParam },
-    SlotEdit { slot: u8, param: SlotParam },
+    Overview,
+    TapMode,
+    ModEdit { 
+        slot: SlotId, 
+        page: EditPage, 
+        draft: ModSlot 
+    },
 }
 
 impl NavState {
-    pub fn handle(self, event: InputEvent, config: &mut ModulatorConfig, bpm: &mut u16) -> Self {
+    pub fn handle(self, event: InputEvent, bpm: &mut u16, config: &mut ModulatorConfig, playback: &mut PlaybackState, rest_bar: &mut bool) -> Self {
+        use InputEvent::*;
+        use NavState::*;
         match (self, event) {
-            (Self::Browse { index: 0 }, InputEvent::Enter) => {
-                NavState::EditBpm { draft: *bpm }
-            }
-            // Edit BPM
-            (Self::EditBpm { draft }, InputEvent::Next) => {
-                NavState::EditBpm { draft: (draft + 1).min(300)}
-            }
-            (Self::EditBpm { draft }, InputEvent::Prev) => {
-                NavState::EditBpm { draft: draft.saturating_sub(1).max(20)}
-            }
-            (Self::EditBpm { draft }, InputEvent::Enter) => {
-                *bpm = draft;
-                NavState::Browse { index: 0 }
-            }
-            (Self::EditBpm { .. }, InputEvent::Back) => {
-                NavState::Browse { index: 0 }
-            }
-            _ => self
+            // Overview
+            (Overview, Enc1Rotate(delta)) => {
+                *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
+                Overview
+            },
+            (Overview, B1Press) => TapMode,
+            _ => Overview
         }
     }
 }
@@ -66,12 +98,6 @@ impl NavState {
 // ------------------------------
 // Display and UI
 // ------------------------------
-
-enum UiState {
-    Default,
-    Hover,
-    Active,
-}
 
 pub struct Display {
     driver: Driver,
@@ -88,52 +114,28 @@ impl Display {
         self.driver.clear();
 
         match nav {
-            NavState::Browse { index: 0 } => self.draw_bpm(bpm, UiState::Hover),
-            NavState::EditBpm { draft } => self.draw_bpm(*draft as f32, UiState::Active),
-            _ => self.draw_bpm(bpm, UiState::Default),
+            NavState::Overview => self.draw_overview(bpm),
+            NavState::TapMode => self.draw_tapmode(),
+            _ => self.draw_overview(bpm),
         }
-        
-        self.draw_modulator(Point::new(0, 12), "SIN", "X2");
-        self.draw_modulator(Point::new(30, 12), "SIN", "X2");
-        self.draw_modulator(Point::new(60, 12), "SIN", "X2");
-        self.draw_modulator(Point::new(90, 12), "SIN", "X2");
-
-        self.draw_modulator(Point::new(0, 36), "SAW", "D4");
-        self.draw_modulator(Point::new(30, 36), "SAW", "D4");
-        self.draw_modulator(Point::new(60, 36), "SAW", "D4");
-        self.draw_modulator(Point::new(90, 36), "SAW", "D4");
         
         self.driver.flush().ok();
     }
 
-    fn draw_bpm(&mut self, bpm: f32, state: UiState) {
+    fn draw_overview(&mut self, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        match state {
-            UiState::Default => {
-                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
-                .draw(&mut self.driver)
-                .ok();
-            },
-            UiState::Hover => {
-                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
-                    .into_styled(BORDER_STYLE)
-                    .draw(&mut self.driver).ok();
-                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
-                    .draw(&mut self.driver)
-                    .ok();
-            }
-            UiState::Active => {
-                Rectangle::new(Point::new(0, 0), Size::new(128, 10))
-                    .into_styled(FILL_STYLE)
-                    .draw(&mut self.driver).ok();
-                Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE_INVERT, Baseline::Top)
-                    .draw(&mut self.driver)
-                    .ok();
-            }
-        }
+        Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+        .draw(&mut self.driver)
+        .ok();
+    }
+
+    fn draw_tapmode(&mut self) {
+        Text::with_baseline("Tap Mode", Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+        .draw(&mut self.driver)
+        .ok();
     }
 
     fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {

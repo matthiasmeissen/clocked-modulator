@@ -10,6 +10,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
+use crate::display::PlaybackState;
+
 use {defmt_rtt as _, panic_probe as _};
 
 mod display;
@@ -31,6 +33,7 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 struct DisplayState {
     bpm: u16,
     nav: display::NavState,
+    playback: PlaybackState,
 }
 
 #[embassy_executor::task]
@@ -68,7 +71,7 @@ async fn modulator_task() {
 async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Blocking>) {
     let mut disp = display::Display::new(i2c);
 
-    let mut state = DisplayState { bpm: 120, nav: display::NavState::Browse { index: 0 } };
+    let mut state = DisplayState { bpm: 120, nav: display::NavState::Overview, playback: PlaybackState::Playing };
     disp.draw_main(state.bpm as f32, &state.nav);
 
     loop {
@@ -116,14 +119,16 @@ fn main() -> ! {
 // Handles input events and sends display updates to Core 1.
 #[embassy_executor::task]
 async fn input_task() {
-    let mut nav = display::NavState::Browse { index: 0 };
+    let mut nav = display::NavState::Overview;
     let mut config = modulator::ModulatorConfig::default();
     let mut bpm: u16 = 120;
+    let mut playback = PlaybackState::Playing;
+    let mut reset_bar = false;
 
     loop {
         let event = INPUT_EVENTS.receive().await;
-        nav = nav.handle(event, &mut config, &mut bpm);
+        nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
         let _ = BPM_CHANNEL.try_send(bpm as f32);
-        let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav });
+        let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav, playback });
     }
 }
