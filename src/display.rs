@@ -170,19 +170,27 @@ impl Display {
 
     fn draw_element_text(&mut self, point: Point, text: &'static str, border: bool) {
         Text::with_baseline(text, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver)
-            .ok();
+            .draw(&mut self.driver).ok();
 
         if border {
             self.draw_element_outline(point);
         }
     }
 
+    fn draw_element_values(&mut self, point: Point, label: &'static str, value: &'static str) {
+        Text::with_baseline(label, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
+
+        Text::with_baseline(value, Point::new(point.x + 3, point.y + 20), CHARACTER_STYLE, Baseline::Top)
+            .draw(&mut self.driver).ok();
+
+        self.draw_element_outline(point);
+    }
+
     fn draw_element_outline(&mut self, point: Point) {
         Rectangle::new(point, Size::new(30, 30))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver)
-            .ok();
+            .draw(&mut self.driver).ok();
     }
 
     fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
@@ -208,21 +216,6 @@ impl Display {
         )
         .draw(&mut self.driver)
         .ok();
-    }
-
-    pub fn draw_bars(&mut self, values: &[f32; 4]) {
-        self.driver.clear();
-
-        for (i, &value) in values.iter().enumerate() {
-            let y = 25 + i as i32 * 10;
-            let width = (value * 128.0) as u32;
-            Rectangle::new(Point::new(0, y), Size::new(width, 5))
-                .into_styled(FILL_STYLE)
-                .draw(&mut self.driver)
-                .ok();
-        }
-
-        self.driver.flush().ok();
     }
 }
 
