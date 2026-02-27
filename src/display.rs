@@ -130,12 +130,46 @@ impl Display {
         Text::with_baseline(s, Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
         .draw(&mut self.driver)
         .ok();
+
+        self.draw_grid_element(2);
+        self.draw_grid_element(3);
+        self.draw_grid_element(4);
+        self.draw_grid_element(6);
+        self.draw_grid_element(7);
+        self.draw_grid_element(8);
     }
 
     fn draw_tapmode(&mut self) {
-        Text::with_baseline("Tap Mode", Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
+        Text::with_baseline("Tap", Point::new(0, 0), CHARACTER_STYLE, Baseline::Top)
         .draw(&mut self.driver)
         .ok();
+
+        self.draw_grid_element(2);
+        self.draw_grid_element(3);
+        self.draw_grid_element(4);
+        self.draw_grid_element(6);
+        self.draw_grid_element(7);
+        self.draw_grid_element(8);
+    }
+
+    fn draw_grid_element(&mut self, slot: usize) {
+        // 128 x 64
+        // Cell is 30 x 30
+        let point = match slot {
+            1 => Point::new(0, 0),
+            2 => Point::new(32, 0),
+            3 => Point::new(64, 0),
+            4 => Point::new(96, 0),
+            5 => Point::new(0, 32),
+            6 => Point::new(32, 32),
+            7 => Point::new(64, 32),
+            8 => Point::new(96, 32),
+            _ => Point::new(0, 0),
+        };
+
+        Rectangle::new(point, Size::new(30, 30))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
     }
 
     fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
