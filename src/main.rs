@@ -21,15 +21,19 @@ mod usb;
 mod input;
 mod nav;
 
-static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
-static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
-static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
+// Channels for inter-task communication
+static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();                           // input → modulator (spsc)
+static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new(); // input → modulator (spsc)
+static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();       // modulator → usb (spsc)
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();            // buttons + encoder → input (mpsc)
+static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();               // input → display on Core 1 (spsc)
 
+// Each core needs its own stack and executor for independent async runtimes
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
+// Snapshot of UI state sent from Core 0 to Core 1 for rendering
 #[derive(Clone, Copy)]
 struct DisplayState {
     bpm: u16,
@@ -37,12 +41,13 @@ struct DisplayState {
     playback: PlaybackState,
 }
 
+// Runs at 1kHz. Advances phasor, computes waveforms, sends USB packets every 8th tick.
 #[embassy_executor::task]
 async fn modulator_task() {
     let usb_tx = USB_TX.sender();
 
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
-    let config = modulator::ModulatorConfig::default();
+    let mut config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
 
     let mut ticker = Ticker::every(Duration::from_micros(1000));
@@ -54,6 +59,10 @@ async fn modulator_task() {
         if let Ok(new_bpm) = BPM_CHANNEL.try_receive() {
             phasor.set_bpm(new_bpm);
             info!("BPM updated to {}", new_bpm);
+        }
+
+        if let Ok(new_config) = CONFIG_CHANNEL.try_receive() {
+            config = new_config;
         }
 
         phasor.tick();
@@ -118,7 +127,8 @@ fn main() -> ! {
     });
 }
 
-// Handles input events and sends display updates to Core 1.
+// Handles input events, runs the nav state machine, and fans out updates to
+// modulator (bpm + config channels) and display (Core 1).
 #[embassy_executor::task]
 async fn input_task() {
     let mut nav = nav::NavState::Overview;
@@ -129,8 +139,13 @@ async fn input_task() {
 
     loop {
         let event = INPUT_EVENTS.receive().await;
+        let prev_config = config;
         nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
         let _ = BPM_CHANNEL.try_send(bpm as f32);
+        // Only send config, when values have changed
+        if prev_config != config {
+            let _ = CONFIG_CHANNEL.try_send(config);
+        }
         let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav, playback });
     }
 }

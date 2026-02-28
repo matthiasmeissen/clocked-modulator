@@ -86,7 +86,7 @@ impl Default for ModSlot {
 pub const NUM_MODULATORS: usize = 4;
 pub const PACKET_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct ModulatorConfig {
     pub slots: [ModSlot; NUM_MODULATORS],
 }
