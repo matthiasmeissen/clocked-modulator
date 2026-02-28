@@ -1,32 +1,20 @@
-use embassy_rp::{i2c, interrupt::typelevel};
+use embassy_rp::i2c;
 use embassy_rp::peripherals::I2C0;
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_6X10},
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle, RoundedRectangle},
+    primitives::{PrimitiveStyle, Rectangle},
     text::{Baseline, Text, TextStyleBuilder},
 };
 use sh1106::{Builder, interface::I2cInterface, prelude::*};
 
-use crate::{
-    input::InputEvent,
-    modulator::{ModSlot, ModulatorConfig},
-};
-
-use crate::nav::*;
+use crate::nav::NavState;
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-const CHARACTER_STYLE_INVERT: MonoTextStyle<BinaryColor> =
-    MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
-const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
-
-// ------------------------------
-// Display and UI
-// ------------------------------
 
 pub struct Display {
     driver: Driver,
@@ -118,31 +106,6 @@ impl Display {
         Rectangle::new(point, Size::new(30, 30))
             .into_styled(BORDER_STYLE)
             .draw(&mut self.driver).ok();
-    }
-
-    fn draw_modulator(&mut self, pos: Point, wave: &str, mul: &str) {
-        Rectangle::new(pos, Size::new(28, 22))
-            .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver)
-            .ok();
-
-        Text::with_baseline(
-            wave,
-            Point::new(pos.x + 2, pos.y + 1),
-            CHARACTER_STYLE,
-            Baseline::Top,
-        )
-        .draw(&mut self.driver)
-        .ok();
-
-        Text::with_baseline(
-            mul,
-            Point::new(pos.x + 2, pos.y + 12),
-            CHARACTER_STYLE,
-            Baseline::Top,
-        )
-        .draw(&mut self.driver)
-        .ok();
     }
 }
 

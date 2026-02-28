@@ -33,21 +33,6 @@ impl SlotId {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum EditPage {
-    Waves,
-    Range,
-}
-
-impl EditPage {
-    fn toggle(self) -> Self {
-        match self {
-            EditPage::Waves => EditPage::Range,
-            EditPage::Range => EditPage::Waves,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
 pub enum PlaybackState {
     Playing,
     Paused,
@@ -57,11 +42,8 @@ pub enum PlaybackState {
 pub enum NavState {
     Overview,
     TapMode,
-    ModEdit {
-        slot: SlotId,
-        page: EditPage,
-        draft: ModSlot,
-    },
+    ModEditWave { slot: SlotId, draft: ModSlot },
+    ModEditRange { slot: SlotId, draft: ModSlot },
 }
 
 impl NavState {
@@ -82,7 +64,7 @@ impl NavState {
                 Overview
             }
             (Overview, B1Press) => TapMode,
-            (Overview, B2Press) => ModEdit { slot: SlotId::A, page: EditPage::Waves, draft: ModSlot::default() },
+            (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: ModSlot::default() },
             _ => Overview,
         }
     }
