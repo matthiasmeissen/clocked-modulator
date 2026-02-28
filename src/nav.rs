@@ -67,12 +67,8 @@ impl NavState {
             (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: ModSlot::default() },
 
             // Tap Mode
-            (TapMode, Enc1Rotate(..)) => {
-                // Reset BPM to 120
-                *bpm = 120;
-                TapMode
-            }
-            (TapMode, B1Press) => self,
+            (TapMode, Enc1Rotate(..)) => self,
+            (TapMode, B1Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
             (TapMode, B2Press) => Overview,
 
             // WaveEdit
