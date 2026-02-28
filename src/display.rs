@@ -10,7 +10,7 @@ use embedded_graphics::{
 use sh1106::{Builder, interface::I2cInterface, prelude::*};
 
 use crate::{
-    encoder::InputEvent,
+    input::InputEvent,
     modulator::{ModSlot, ModulatorConfig},
 };
 

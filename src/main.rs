@@ -18,11 +18,11 @@ mod display;
 mod modulator;
 mod phasor;
 mod usb;
-mod encoder;
+mod input;
 
 static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();
 static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, encoder::InputEvent, 4> = Channel::new();
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
 
 static mut CORE1_STACK: Stack<16384> = Stack::new();
@@ -85,9 +85,10 @@ fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
     // Encoder pins (Core 0)
-    let pin_a = Input::new(p.PIN_14, Pull::Up);
-    let pin_b = Input::new(p.PIN_15, Pull::Up);
-    let button = Input::new(p.PIN_18, Pull::Up);
+    let e1_clk = Input::new(p.PIN_14, Pull::Up);
+    let e1_dta = Input::new(p.PIN_15, Pull::Up);
+    let b1 = Input::new(p.PIN_18, Pull::Up);
+    let b2 = Input::new(p.PIN_10, Pull::Up);
 
     // Display I2C — moves to Core 1
     let mut i2c_config = i2c::Config::default();
@@ -110,7 +111,7 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
-        encoder::init_encoder(spawner, button, pin_a, pin_b);
+        input::init_encoder(spawner, e1_clk, e1_dta, b1, b2);
         spawner.spawn(modulator_task()).unwrap();
         spawner.spawn(input_task()).unwrap();
     });

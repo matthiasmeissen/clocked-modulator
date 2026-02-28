@@ -34,17 +34,18 @@ impl defmt::Format for InputEvent {
 
 pub fn init_encoder(
     spawner: embassy_executor::Spawner,
-    button: Input<'static>,
-    pin_a: Input<'static>,
-    pin_b: Input<'static>,
+    e1_clk: Input<'static>,
+    e1_dta: Input<'static>,
+    b1: Input<'static>,
+    b2: Input<'static>,
 ) {
-    spawner.must_spawn(encoder_task(pin_a, pin_b));
-    spawner.must_spawn(button_task(button));
+    spawner.must_spawn(encoder_task(e1_clk, e1_dta));
+    spawner.must_spawn(button_task(b1, InputEvent::B1Press));
+    spawner.must_spawn(button_task(b2, InputEvent::B2Press));
 }
 
-// TODO: Fix this to handle all buttons (current implementation only for testing)
-#[embassy_executor::task]
-async fn button_task(mut button: Input<'static>) {
+#[embassy_executor::task(pool_size = 6)]
+async fn button_task(mut button: Input<'static>, event: InputEvent) {
     let debounce = Duration::from_millis(50);
 
     loop {
@@ -52,18 +53,9 @@ async fn button_task(mut button: Input<'static>) {
         Timer::after(debounce).await;
 
         if button.is_low() {
-            let press_start = Instant::now();
-
             button.wait_for_high().await;
             Timer::after(debounce).await;
-
-            let held_ms = press_start.elapsed().as_millis();
-
-            if held_ms <= 500 {
-                let _ = INPUT_EVENTS.try_send(InputEvent::B1Press);
-            } else {
-                let _ = INPUT_EVENTS.try_send(InputEvent::B2Press);
-            }
+            let _ = INPUT_EVENTS.try_send(event);
         }
     }
 }
