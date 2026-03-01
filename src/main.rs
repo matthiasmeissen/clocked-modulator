@@ -94,11 +94,17 @@ async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c:
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
-    // Encoder pins (Core 0)
+    // Input pins (Core 0)
     let e1_clk = Input::new(p.PIN_14, Pull::Up);
     let e1_dta = Input::new(p.PIN_15, Pull::Up);
+    let e2_clk = Input::new(p.PIN_12, Pull::Up);
+    let e2_dta = Input::new(p.PIN_13, Pull::Up);
     let b1 = Input::new(p.PIN_18, Pull::Up);
-    let b2 = Input::new(p.PIN_10, Pull::Up);
+    let b2 = Input::new(p.PIN_20, Pull::Up);
+    let b3 = Input::new(p.PIN_21, Pull::Up);
+    let b4 = Input::new(p.PIN_19, Pull::Up);
+    let b5 = Input::new(p.PIN_11, Pull::Up);
+    let b6 = Input::new(p.PIN_10, Pull::Up);
 
     // Display I2C — moves to Core 1
     let mut i2c_config = i2c::Config::default();
@@ -121,7 +127,7 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
-        input::init_encoder(spawner, e1_clk, e1_dta, b1, b2);
+        input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
         spawner.spawn(modulator_task()).unwrap();
         spawner.spawn(input_task()).unwrap();
     });

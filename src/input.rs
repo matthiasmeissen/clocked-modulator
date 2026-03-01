@@ -36,12 +36,23 @@ pub fn init_encoder(
     spawner: embassy_executor::Spawner,
     e1_clk: Input<'static>,
     e1_dta: Input<'static>,
+    e2_clk: Input<'static>,
+    e2_dta: Input<'static>,
     b1: Input<'static>,
     b2: Input<'static>,
+    b3: Input<'static>,
+    b4: Input<'static>,
+    b5: Input<'static>,
+    b6: Input<'static>,
 ) {
-    spawner.must_spawn(encoder_task(e1_clk, e1_dta));
+    spawner.must_spawn(encoder_task(e1_clk, e1_dta, InputEvent::Enc1Rotate(1), InputEvent::Enc1Rotate(-1)));
+    spawner.must_spawn(encoder_task(e2_clk, e2_dta, InputEvent::Enc2Rotate(1), InputEvent::Enc2Rotate(-1)));
     spawner.must_spawn(button_task(b1, InputEvent::B1Press));
     spawner.must_spawn(button_task(b2, InputEvent::B2Press));
+    spawner.must_spawn(button_task(b3, InputEvent::B3Press));
+    spawner.must_spawn(button_task(b4, InputEvent::B4Press));
+    spawner.must_spawn(button_task(b5, InputEvent::B5Press));
+    spawner.must_spawn(button_task(b6, InputEvent::B6Press));
 }
 
 #[embassy_executor::task(pool_size = 6)]
@@ -56,23 +67,26 @@ async fn button_task(mut button: Input<'static>, event: InputEvent) {
             button.wait_for_high().await;
             Timer::after(debounce).await;
             let _ = INPUT_EVENTS.try_send(event);
+            info!("{}", event);
         }
     }
 }
 
 // TODO: Fix this to handle both encoders (current implementation only for testing)
-#[embassy_executor::task]
-async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>) {
+#[embassy_executor::task(pool_size = 2)]
+async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>, event_cw: InputEvent, event_ac: InputEvent) {
     let mut encoder = RotaryEncoder::new(pin_a, pin_b).into_standard_mode();
 
     loop {
         Timer::after(Duration::from_millis(1)).await;
         match encoder.update() {
             Direction::Clockwise => {
-                let _ = INPUT_EVENTS.try_send(InputEvent::Enc1Rotate(1));
+                let _ = INPUT_EVENTS.try_send(event_cw);
+                info!("{}", event_cw)
             }
             Direction::Anticlockwise => {
-                let _ = INPUT_EVENTS.try_send(InputEvent::Enc1Rotate(-1));
+                let _ = INPUT_EVENTS.try_send(event_ac);
+                info!("{}", event_ac)
             }
             Direction::None => {}
         }
