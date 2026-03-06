@@ -1,7 +1,7 @@
 
 use crate::{
     input::InputEvent,
-    modulator::{ModSlot, ModulatorConfig},
+    modulator::{ModSlot, ModulatorConfig, Waveshape},
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -87,7 +87,12 @@ impl NavState {
             }
             // Encoder Button 1 Press does nothing
             (ModEditWave {..}, B2Press) => Overview,
-            (ModEditWave {..}, B3Press) => self, // TO DO: Implement reset method on modslot
+            (ModEditWave {slot, mut draft}, B3Press) => {
+                let defaults = ModSlot::default();
+                draft.wave = defaults.wave;
+                draft.mul = defaults.mul;
+                ModEditWave { slot, draft }
+            },
             (ModEditWave { slot, draft}, B5Press) => {
                 // TO DO: Consider showing "Ok+" as label, when pending changes
                 config.slots[slot.index()] = draft;
