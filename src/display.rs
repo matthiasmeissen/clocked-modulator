@@ -75,6 +75,9 @@ impl Display {
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), false);
+
+        self.draw_element_text(get_slot_position(3), "Up", true);
+        self.draw_element_text(get_slot_position(8), "Wave", true);
     }
 
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
