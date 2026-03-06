@@ -13,7 +13,7 @@ pub enum SlotId {
 }
 
 impl SlotId {
-    fn index(self) -> usize {
+    pub fn index(self) -> usize {
         match self {
             Self::A => 0,
             Self::B => 1,
@@ -22,12 +22,12 @@ impl SlotId {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::A => "Slot A",
-            Self::B => "Slot B",
-            Self::C => "Slot C",
-            Self::D => "Slot D",
+            Self::A => "A",
+            Self::B => "B",
+            Self::C => "C",
+            Self::D => "D",
         }
     }
 }
@@ -64,7 +64,10 @@ impl NavState {
                 Overview
             }
             (Overview, B1Press) => TapMode,
-            (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: ModSlot::default() },
+            (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: config.slots[SlotId::A.index()] },
+            (Overview, B3Press) => ModEditWave { slot: SlotId::B, draft: config.slots[SlotId::B.index()] },
+            (Overview, B5Press) => ModEditWave { slot: SlotId::C, draft: config.slots[SlotId::C.index()] },
+            (Overview, B6Press) => ModEditWave { slot: SlotId::D, draft: config.slots[SlotId::D.index()] },
 
             // Tap Mode
             (TapMode, Enc1Rotate(..)) => self,
@@ -81,7 +84,7 @@ impl NavState {
                 self
             },
             (ModEditWave {..}, B2Press) => Overview,
-            (state, _) => Overview,
+            (state, _) => state,
         }
     }
 }

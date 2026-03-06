@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 use sh1106::{Builder, interface::I2cInterface, prelude::*};
 
-use crate::modulator::ModSlot;
+use crate::{modulator::ModSlot, nav::SlotId};
 use crate::nav::NavState;
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
@@ -34,8 +34,8 @@ impl Display {
         match nav {
             NavState::Overview => self.draw_screen_overview(bpm),
             NavState::TapMode => self.draw_screen_tapmode(bpm),
-            NavState::ModEditWave { draft, .. } |
-            NavState::ModEditRange { draft, .. } => self.draw_screen_modedit(draft),
+            NavState::ModEditWave { draft, slot } => self.draw_screen_modedit_wave(draft, slot),
+            NavState::ModEditRange { slot, draft } => self.draw_screen_modedit_range(draft, slot),
         }
 
         self.driver.flush().ok();
@@ -61,8 +61,8 @@ impl Display {
         self.draw_element_text(get_slot_position(8), "PLAY", true);
     }
 
-    fn draw_screen_modedit(&mut self, draft: &ModSlot) {
-        self.draw_element_text(get_slot_position(1), "A", false);
+    fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
+        self.draw_element_text(get_slot_position(1), slot.label(), false);
 
         self.draw_element_values(get_slot_position(2), "Wave", draft.wave.name());
         self.draw_element_text(get_slot_position(3), "Up", true);
@@ -71,6 +71,10 @@ impl Display {
         self.draw_element_values(get_slot_position(6), "Mult", draft.mul.name());
         self.draw_element_text(get_slot_position(7), "Ok", true);
         self.draw_element_text(get_slot_position(8), "Rng", true);
+    }
+
+    fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
+        self.draw_element_text(get_slot_position(1), slot.label(), false);
     }
 
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
