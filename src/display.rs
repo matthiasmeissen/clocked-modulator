@@ -16,6 +16,7 @@ type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
 
 pub struct Display {
     driver: Driver,
@@ -76,10 +77,16 @@ impl Display {
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), false);
 
+        self.draw_element_range(get_slot_position(2), draft.min, draft.max);
         self.draw_element_text(get_slot_position(3), "Up", true);
+        self.draw_element_text(get_slot_position(4), "Res", true);
+        
+        self.draw_element_text(get_slot_position(7), "Ok", true);
         self.draw_element_text(get_slot_position(8), "Wave", true);
     }
 
+    // TO DO: Convert into generic draw float element
+    /// Draws a grid cell with bpm as text
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
@@ -92,6 +99,7 @@ impl Display {
         self.draw_element_outline(point);
     }
 
+    /// Draws a grid cell with a text
     fn draw_element_text(&mut self, point: Point, text: &'static str, border: bool) {
         Text::with_baseline(text, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
             .draw(&mut self.driver).ok();
@@ -101,6 +109,7 @@ impl Display {
         }
     }
 
+    /// Draws a grid cell with text label and value
     fn draw_element_values(&mut self, point: Point, label: &'static str, value: &'static str) {
         Text::with_baseline(label, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
             .draw(&mut self.driver).ok();
@@ -111,8 +120,50 @@ impl Display {
         self.draw_element_outline(point);
     }
 
+    /// Draw two grid cells as column with range adjust
+    fn draw_element_range(&mut self, point: Point, min: f32, max: f32) {
+        let bar_x = point.x + 11;
+        let bar_y = point.y + 3;
+        let bar_height: i32 = 56;
+
+        // Bar outline (full range 0.0–1.0)
+        Rectangle::new(Point::new(bar_x, bar_y), Size::new(8, bar_height as u32))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+
+        // Map values to pixel y (inverted: 1.0 = top, 0.0 = bottom)
+        let max_y = bar_y + ((1.0 - max) * bar_height as f32) as i32;
+        let min_y = bar_y + ((1.0 - min) * bar_height as f32) as i32;
+
+        // Filled region between min and max
+        let fill_height = (min_y - max_y).max(0) as u32;
+        Rectangle::new(Point::new(bar_x, max_y), Size::new(8, fill_height))
+            .into_styled(FILL_STYLE)
+            .draw(&mut self.driver).ok();
+
+        // Min indicator (left side)
+        Rectangle::new(Point::new(bar_x - 8, min_y - 1), Size::new(6, 3))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+
+        // Max indicator (right side)
+        Rectangle::new(Point::new(bar_x + 10, max_y - 1), Size::new(6, 3))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+
+        self.draw_element_outline_column(point);
+    }
+
+    /// Outline for one grid cell
     fn draw_element_outline(&mut self, point: Point) {
         Rectangle::new(point, Size::new(30, 30))
+            .into_styled(BORDER_STYLE)
+            .draw(&mut self.driver).ok();
+    }
+
+    /// Outline for two grid cells spanning a column
+    fn draw_element_outline_column(&mut self, point: Point) {
+        Rectangle::new(point, Size::new(30, 62))
             .into_styled(BORDER_STYLE)
             .draw(&mut self.driver).ok();
     }

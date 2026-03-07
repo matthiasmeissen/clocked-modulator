@@ -1,7 +1,7 @@
 
 use crate::{
     input::InputEvent,
-    modulator::{ModSlot, ModulatorConfig, Waveshape},
+    modulator::{ModSlot, ModulatorConfig},
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -101,13 +101,26 @@ impl NavState {
             (ModEditWave {slot, draft}, B6Press) => ModEditRange { slot, draft },
             
             // MODEDIT RANGE PAGE
-            // TO DO: Implement Encoder 1 Rotate (Change max)
-            // TO DO: Implement Encoder 2 Rotate (Change min)
+            (ModEditRange { slot, mut draft }, Enc1Rotate(delta)) => {
+                draft.min = (draft.min + delta as f32 * 0.05).clamp(0.0, 1.0);
+                ModEditRange { slot, draft }
+            }
+            (ModEditRange { slot, mut draft }, Enc2Rotate(delta)) => {
+                draft.max = (draft.max + delta as f32 * 0.05).clamp(0.0, 1.0);
+                ModEditRange { slot, draft }
+            }
             // Encoder Button 1 Press does nothing
             (ModEditRange {..}, B2Press) => Overview,
-            // TO DO: Implement Button 3 Press (Rest Range min and max)
+            (ModEditRange {slot, mut draft}, B3Press) => {
+                draft.min = 0.0;
+                draft.max = 1.0;
+                ModEditRange { slot, draft }
+            },
             // Encoder Button 4 Press does nothing
-            // TO DO: Implement Button 5 Press (Confirm changes)
+            (ModEditRange { slot, draft}, B5Press) => {
+                config.slots[slot.index()] = draft;
+                self
+            },
             (ModEditRange {slot, draft}, B6Press) => ModEditWave { slot, draft },
 
             (state, _) => state,
