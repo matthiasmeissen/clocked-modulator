@@ -56,27 +56,37 @@ impl Waveshape {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct ModSlot {
     pub mul: Multiplier,
     pub wave: Waveshape,
+    pub min: f32,
+    pub max: f32,
 }
 
 impl ModSlot {
-    pub fn new(mul: Multiplier, wave: Waveshape) -> Self {
-        Self { mul, wave }
+    pub fn new(mul: Multiplier, wave: Waveshape, min: f32, max: f32) -> Self {
+        Self { mul, wave, min, max }
     }
 
     pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
-        self.wave.compute_from_phasor(phases[self.mul.index()])
+        let raw_value = self.wave.compute_from_phasor(phases[self.mul.index()]);
+        let mapped_value = self.min + raw_value * (self.max - self.min);
+        mapped_value
+    }
+}
+
+impl Default for ModSlot {
+    fn default() -> Self {
+        Self { mul: Multiplier::X1, wave: Waveshape::Saw, min: 0.0, max: 1.0 }
     }
 }
 
 
-pub const NUM_MODULATORS: usize = 8;
+pub const NUM_MODULATORS: usize = 4;
 pub const PACKET_SIZE: usize = 2 + NUM_MODULATORS * 4;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct ModulatorConfig {
     pub slots: [ModSlot; NUM_MODULATORS],
 }
@@ -85,14 +95,10 @@ impl Default for ModulatorConfig {
     fn default() -> Self {
         Self {
             slots: [
-                ModSlot::new(Multiplier::D4, Waveshape::Sin),
-                ModSlot::new(Multiplier::D2, Waveshape::Tri),
-                ModSlot::new(Multiplier::X1, Waveshape::Saw),
-                ModSlot::new(Multiplier::X2, Waveshape::Squ),
-                ModSlot::new(Multiplier::D4, Waveshape::Tri),
-                ModSlot::new(Multiplier::D2, Waveshape::Sin),
-                ModSlot::new(Multiplier::X1, Waveshape::Squ),
-                ModSlot::new(Multiplier::X2, Waveshape::Saw),
+                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.0, 1.0),
+                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.2, 0.8),
+                ModSlot::new(Multiplier::D2, Waveshape::Sin, 0.0, 1.0),
+                ModSlot::new(Multiplier::D4, Waveshape::Squ, 0.0, 1.0),
             ]
         }
     }
