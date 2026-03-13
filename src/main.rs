@@ -8,7 +8,7 @@ use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{Stack, spawn_core1};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 use static_cell::StaticCell;
 use crate::nav::PlaybackState;
 
@@ -158,6 +158,12 @@ async fn input_task() {
     let mut playback = PlaybackState::Playing;
     let mut reset_bar = false;
 
+    // Tap tempo state (lives here, not in nav, because it needs timestamps)
+    let mut last_tap: Option<Instant> = None;
+    let mut tap_intervals: [u64; 4] = [0; 4];  // circular buffer of intervals in ms
+    let mut tap_count: usize = 0;               // how many intervals recorded (max 4)
+    let mut tap_index: usize = 0;               // write position in circular buffer
+
     loop {
         let event = INPUT_EVENTS.receive().await;
 
@@ -168,6 +174,27 @@ async fn input_task() {
 
         // State machine: process input, may mutate bpm/config/playback/reset_bar
         nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
+
+        // Tap tempo: measure B3 intervals in TapMode, compute BPM from rolling average
+        if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
+            let now = Instant::now();
+            if let Some(prev) = last_tap {
+                let interval_ms = now.duration_since(prev).as_millis() as u64;
+                if interval_ms < 2000 {
+                    tap_intervals[tap_index] = interval_ms;
+                    tap_index = (tap_index + 1) % 4;
+                    if tap_count < 4 { tap_count += 1; }
+
+                    let sum: u64 = tap_intervals[..tap_count].iter().sum();
+                    let avg = sum / tap_count as u64;
+                    bpm = (60_000 / avg).clamp(20, 300) as u16;
+                } else {
+                    tap_count = 0;
+                    tap_index = 0;
+                }
+            }
+            last_tap = Some(now);
+        }
 
         // Fan out changes to modulator task (only send what actually changed)
         if bpm != prev_bpm {

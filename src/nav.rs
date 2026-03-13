@@ -80,7 +80,7 @@ impl NavState {
             // Encoder 2 Rotate does nothing
             (TapMode, B1Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
             (TapMode, B2Press) => Overview,
-            // TO DO: Implement Tap Tempo for Button 3
+            // B3Press (tap tempo) is handled in input_task, not here
             // Encoder Button 4 Press does nothing
             (TapMode, B5Press) => {
                 *playback = PlaybackState::Paused;
