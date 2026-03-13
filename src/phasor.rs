@@ -86,4 +86,8 @@ impl PhasorBank {
             self.phases[idx] = (self.phases[idx] + self.base_increment * mul.factor()) % 1.0;
         }
     }
+
+    pub fn reset(&mut self) {
+        self.phases = [0.0; Multiplier::ALL.len()];
+    }
 }

@@ -53,12 +53,14 @@ impl NavState {
         bpm: &mut u16,
         config: &mut ModulatorConfig,
         playback: &mut PlaybackState,
-        rest_bar: &mut bool,
+        reset_bar: &mut bool,
     ) -> Self {
         use InputEvent::*;
         use NavState::*;
         match (self, event) {
+            // ------------------------
             // OVERVIEW PAGE
+            // ------------------------
             (Overview, Enc1Rotate(delta)) => {
                 *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
                 Overview
@@ -71,12 +73,33 @@ impl NavState {
             (Overview, B5Press) => ModEditWave { slot: SlotId::C, draft: config.slots[SlotId::C.index()] },
             (Overview, B6Press) => ModEditWave { slot: SlotId::D, draft: config.slots[SlotId::D.index()] },
 
+            // ------------------------
             // TAP TEMPO PAGE
-            (TapMode, Enc1Rotate(..)) => self,
-            (TapMode, B1Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
+            // ------------------------
+            (TapMode, Enc1Rotate(delta)) => {
+                *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
+                TapMode
+            }
+            // Encoder 2 Rotate does nothing
+            // Button 1 Press does nothing
             (TapMode, B2Press) => Overview,
+            // B3Press (tap tempo) is handled in input_task, not here
+            (TapMode, B4Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
+            (TapMode, B5Press) => {
+                *playback = PlaybackState::Paused;
+                TapMode
+            }
+            (TapMode, B6Press) => {
+                match *playback {
+                    PlaybackState::Paused => *playback = PlaybackState::Playing,
+                    PlaybackState::Playing => *reset_bar = true,
+                }
+                TapMode
+            }
 
+            // ------------------------
             // MODEDIT WAVE PAGE
+            // ------------------------
             (ModEditWave { slot, mut draft }, Enc1Rotate(delta)) => {
                 draft.wave = if delta > 0 {draft.wave.next()} else {draft.wave.prev()};
                 ModEditWave { slot, draft }
@@ -100,7 +123,9 @@ impl NavState {
             },
             (ModEditWave {slot, draft}, B6Press) => ModEditRange { slot, draft },
             
+            // ------------------------
             // MODEDIT RANGE PAGE
+            // ------------------------
             (ModEditRange { slot, mut draft }, Enc1Rotate(delta)) => {
                 draft.min = (draft.min + delta as f32 * 0.05).clamp(0.0, 1.0);
                 ModEditRange { slot, draft }

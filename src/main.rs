@@ -17,16 +17,19 @@ use {defmt_rtt as _, panic_probe as _};
 mod display;
 mod modulator;
 mod phasor;
+mod tap_tempo;
 mod usb;
 mod input;
 mod nav;
 
 // Channels for inter-task communication
-static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();                           // input → modulator (spsc)
-static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new(); // input → modulator (spsc)
-static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();       // modulator → usb (spsc)
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();            // buttons + encoder → input (mpsc)
-static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();               // input → display on Core 1 (spsc)
+static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();                              // input → modulator (spsc)
+static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new();    // input → modulator (spsc)
+static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();          // modulator → usb (spsc)
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();               // buttons + encoder → input (mpsc)
+static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();                  // input → display on Core 1 (spsc)
+static PLAYBACK_CHANNEL: Channel<CriticalSectionRawMutex, PlaybackState, 2> = Channel::new();               // input → modulator (spsc)
+static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();                           // input → modulator (spsc, one-shot)
 
 // Each core needs its own stack and executor for independent async runtimes
 static mut CORE1_STACK: Stack<16384> = Stack::new();
@@ -45,6 +48,8 @@ struct DisplayState {
 #[embassy_executor::task]
 async fn modulator_task() {
     let usb_tx = USB_TX.sender();
+
+    let mut playback = PlaybackState::Playing;
 
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
     let mut config = modulator::ModulatorConfig::default();
@@ -65,7 +70,18 @@ async fn modulator_task() {
             config = new_config;
         }
 
-        phasor.tick();
+        if let Ok(new_playback) = PLAYBACK_CHANNEL.try_receive() {
+            playback = new_playback;
+        }
+
+        if let Ok(true) = RESET_CHANNEL.try_receive() {
+            phasor.reset();
+        }
+
+        if playback == PlaybackState::Playing {
+            phasor.tick();
+        }
+
         tick_count += 1;
 
         if tick_count % 8 == 0 {
@@ -142,16 +158,42 @@ async fn input_task() {
     let mut bpm: u16 = 120;
     let mut playback = PlaybackState::Playing;
     let mut reset_bar = false;
+    let mut tap_tempo = tap_tempo::TapTempo::new();
 
     loop {
         let event = INPUT_EVENTS.receive().await;
+
+        // Snapshot state before the state machine runs
+        let prev_bpm = bpm;
         let prev_config = config;
+        let prev_playback = playback;
+
+        // State machine: process input, may mutate bpm/config/playback/reset_bar
         nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
-        let _ = BPM_CHANNEL.try_send(bpm as f32);
-        // Only send config, when values have changed
-        if prev_config != config {
+
+        // Tap tempo: measure B3 intervals in TapMode
+        if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
+            if let Some(new_bpm) = tap_tempo.tap() {
+                bpm = new_bpm;
+            }
+        }
+
+        // Fan out changes to modulator task (only send what actually changed)
+        if bpm != prev_bpm {
+            let _ = BPM_CHANNEL.try_send(bpm as f32);
+        }
+        if config != prev_config {
             let _ = CONFIG_CHANNEL.try_send(config);
         }
+        if playback != prev_playback {
+            let _ = PLAYBACK_CHANNEL.try_send(playback);
+        }
+        if reset_bar {
+            let _ = RESET_CHANNEL.try_send(true);
+            reset_bar = false;
+        }
+
+        // Always update display so UI reflects current state
         let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav, playback });
     }
 }
