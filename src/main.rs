@@ -25,7 +25,7 @@ mod nav;
 // Channels for inter-task communication
 static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();                              // input → modulator (spsc)
 static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new();    // input → modulator (spsc)
-static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::PACKET_SIZE], 8> = Channel::new();          // modulator → usb (spsc)
+static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE], 8> = Channel::new();     // modulator → usb (spsc)
 static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();               // buttons + encoder → input (mpsc)
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();                  // input → display on Core 1 (spsc)
 static PLAYBACK_CHANNEL: Channel<CriticalSectionRawMutex, PlaybackState, 2> = Channel::new();               // input → modulator (spsc)
@@ -85,8 +85,8 @@ async fn modulator_task() {
         tick_count += 1;
 
         if tick_count % 8 == 0 {
-            let packet = engine.compute_bytes(&phasor, &config);
-            let _ = usb_tx.try_send(packet);
+            let frame = engine.compute_midi_bytes(&phasor, &config);
+            let _ = usb_tx.try_send(frame);
         }
     }
 }
