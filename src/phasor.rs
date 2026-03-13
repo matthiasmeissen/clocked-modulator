@@ -83,7 +83,10 @@ impl PhasorBank {
     
     pub fn tick(&mut self) {
         for (idx, mul) in Multiplier::ALL.iter().enumerate() {
-            self.phases[idx] = (self.phases[idx] + self.base_increment * mul.factor()) % 1.0;
+            self.phases[idx] += self.base_increment * mul.factor();
+            if self.phases[idx] >= 1.0 {
+                self.phases[idx] -= 1.0;
+            }
         }
     }
 

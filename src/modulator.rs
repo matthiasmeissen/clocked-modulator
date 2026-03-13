@@ -84,7 +84,9 @@ impl Default for ModSlot {
 
 
 pub const NUM_MODULATORS: usize = 4;
-pub const PACKET_SIZE: usize = 2 + NUM_MODULATORS * 4;
+pub const MIDI_PACKET_SIZE: usize = 4;
+pub const MIDI_PACKETS_PER_FRAME: usize = NUM_MODULATORS * 2;
+pub const MIDI_FRAME_SIZE: usize = MIDI_PACKETS_PER_FRAME * MIDI_PACKET_SIZE;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct ModulatorConfig {
@@ -117,21 +119,33 @@ impl ModulatorEngine {
         values
     }
 
-    pub fn compute_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [u8; PACKET_SIZE] {
+    /// Convert 4 outputs into 8 USB MIDI packets (14-bit CC: MSB + LSB per slot).
+    /// Each output (0.0–1.0) maps to 0–16383, split across CC N (MSB) and CC N+32 (LSB).
+    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [u8; MIDI_FRAME_SIZE] {
         let outputs = self.compute(phasor, config);
-        let mut buffer = [0u8; PACKET_SIZE];
+        let mut buf = [0u8; MIDI_FRAME_SIZE];
 
-        // Sync header (must match TouchDesigner parser)
-        buffer[0] = 0xAA;
-        buffer[1] = 0xBB;
-
-        // Pack f32 outputs as little-endian bytes
         for (i, &output) in outputs.iter().enumerate() {
-            let bytes = output.to_le_bytes();
-            buffer[2 + i * 4..6 + i * 4].copy_from_slice(&bytes);
+            let value_14bit = (output.clamp(0.0, 1.0) * 16383.0) as u16;
+            let msb = (value_14bit >> 7) as u8;
+            let lsb = (value_14bit & 0x7F) as u8;
+
+            let base = i * 8;
+
+            // MSB packet: CC i on channel 1
+            buf[base]     = 0x0B; // cable 0, CIN = Control Change
+            buf[base + 1] = 0xB0; // CC, channel 1
+            buf[base + 2] = i as u8;
+            buf[base + 3] = msb;
+
+            // LSB packet: CC i+32 on channel 1
+            buf[base + 4] = 0x0B;
+            buf[base + 5] = 0xB0;
+            buf[base + 6] = (i + 32) as u8;
+            buf[base + 7] = lsb;
         }
 
-        buffer
+        buf
     }
 }
 
