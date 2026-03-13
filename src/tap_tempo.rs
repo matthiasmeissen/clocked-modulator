@@ -1,6 +1,7 @@
 use embassy_time::Instant;
 
 const BUFFER_SIZE: usize = 4;
+const MIN_TAPS: usize = 4;
 const TIMEOUT_MS: u64 = 2000;
 
 pub struct TapTempo {
@@ -30,9 +31,13 @@ impl TapTempo {
                 self.index = (self.index + 1) % BUFFER_SIZE;
                 if self.count < BUFFER_SIZE { self.count += 1; }
 
-                let sum: u64 = self.intervals[..self.count].iter().sum();
-                let avg = sum / self.count as u64;
-                Some((60_000 / avg).clamp(20, 300) as u16)
+                if self.count >= MIN_TAPS {
+                    let sum: u64 = self.intervals[..self.count].iter().sum();
+                    let avg = sum / self.count as u64;
+                    Some((60_000 / avg).clamp(20, 300) as u16)
+                } else {
+                    None
+                }
             } else {
                 self.count = 0;
                 self.index = 0;
