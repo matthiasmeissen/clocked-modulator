@@ -76,12 +76,15 @@ impl NavState {
             // ------------------------
             // TAP TEMPO PAGE
             // ------------------------
-            (TapMode, Enc1Rotate(..)) => self,
+            (TapMode, Enc1Rotate(delta)) => {
+                *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
+                TapMode
+            }
             // Encoder 2 Rotate does nothing
-            (TapMode, B1Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
+            // Button 1 Press does nothing
             (TapMode, B2Press) => Overview,
             // B3Press (tap tempo) is handled in input_task, not here
-            // Encoder Button 4 Press does nothing
+            (TapMode, B4Press) => { *bpm = 120; TapMode },      // Reset BPM to 120
             (TapMode, B5Press) => {
                 *playback = PlaybackState::Paused;
                 TapMode
