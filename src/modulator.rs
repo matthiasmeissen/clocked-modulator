@@ -121,7 +121,7 @@ impl ModulatorEngine {
 
     /// Convert 4 outputs into 8 USB MIDI packets (14-bit CC: MSB + LSB per slot).
     /// Each output (0.0–1.0) maps to 0–16383, split across CC N (MSB) and CC N+32 (LSB).
-    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [u8; MIDI_FRAME_SIZE] {
+    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> ([u8; MIDI_FRAME_SIZE], [f32; NUM_MODULATORS]) {
         let outputs = self.compute(phasor, config);
         let mut buf = [0u8; MIDI_FRAME_SIZE];
 
@@ -145,7 +145,7 @@ impl ModulatorEngine {
             buf[base + 7] = lsb;
         }
 
-        buf
+        (buf, outputs)
     }
 }
 

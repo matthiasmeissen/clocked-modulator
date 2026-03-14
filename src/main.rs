@@ -10,6 +10,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
+use crate::modulator::{MIDI_FRAME_SIZE, NUM_MODULATORS};
 use crate::nav::PlaybackState;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -60,12 +61,13 @@ async fn modulator_task() {
     let mut ticker = Ticker::every(Duration::from_micros(1000));
     let mut tick_count: u32 = 0;
 
+    let mut frame: ([u8; MIDI_FRAME_SIZE], [f32; NUM_MODULATORS]) = ([0; MIDI_FRAME_SIZE], [0.0; NUM_MODULATORS]);
+
     loop {
         ticker.next().await;
 
         if let Ok(new_bpm) = BPM_CHANNEL.try_receive() {
             phasor.set_bpm(new_bpm);
-            info!("BPM updated to {}", new_bpm);
         }
 
         if let Ok(new_config) = CONFIG_CHANNEL.try_receive() {
@@ -88,13 +90,14 @@ async fn modulator_task() {
 
         
         if tick_count % 8 == 0 {
-            let frame = engine.compute_midi_bytes(&phasor, &config);
-            let _ = usb_tx.try_send(frame);
+            frame = engine.compute_midi_bytes(&phasor, &config);
+            let (send, _ ) = frame;
+            let _ = usb_tx.try_send(send);
         }
 
         if tick_count % 16 == 0 {
             // Send LED values every tick (1kHz) — set_config is just a register write
-            let outputs = engine.compute(&phasor, &config);
+            let (_, outputs) = frame;
             let _ = LED_VALUES.try_send(outputs);
         }
     }
@@ -173,28 +176,21 @@ async fn input_task() {
     loop {
         let event = INPUT_EVENTS.receive().await;
 
-        // Snapshot state before the state machine runs
         let prev_bpm = bpm;
-        let prev_config = config;
         let prev_playback = playback;
 
-        // State machine: process input, may mutate bpm/config/playback/reset_bar
         nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
 
-        // Tap tempo: measure B3 intervals in TapMode
         if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
             if let Some(new_bpm) = tap_tempo.tap() {
                 bpm = new_bpm;
             }
         }
 
-        // Fan out changes to modulator task (only send what actually changed)
         if bpm != prev_bpm {
             let _ = BPM_CHANNEL.try_send(bpm as f32);
         }
-        if config != prev_config {
-            let _ = CONFIG_CHANNEL.try_send(config);
-        }
+        let _ = CONFIG_CHANNEL.try_send(config);
         if playback != prev_playback {
             let _ = PLAYBACK_CHANNEL.try_send(playback);
         }
@@ -202,8 +198,6 @@ async fn input_task() {
             let _ = RESET_CHANNEL.try_send(true);
             reset_bar = false;
         }
-
-        // Always update display so UI reflects current state
         let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav, playback });
     }
 }

@@ -67,7 +67,6 @@ async fn button_task(mut button: Input<'static>, event: InputEvent) {
             button.wait_for_high().await;
             Timer::after(debounce).await;
             let _ = INPUT_EVENTS.try_send(event);
-            info!("{}", event);
         }
     }
 }
@@ -82,11 +81,9 @@ async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>, event_cw: In
         match encoder.update() {
             Direction::Clockwise => {
                 let _ = INPUT_EVENTS.try_send(event_cw);
-                info!("{}", event_cw)
             }
             Direction::Anticlockwise => {
                 let _ = INPUT_EVENTS.try_send(event_ac);
-                info!("{}", event_ac)
             }
             Direction::None => {}
         }
