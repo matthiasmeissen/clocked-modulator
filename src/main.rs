@@ -20,6 +20,7 @@ mod phasor;
 mod tap_tempo;
 mod usb;
 mod input;
+mod led;
 mod nav;
 
 // Channels for inter-task communication
@@ -144,6 +145,7 @@ fn main() -> ! {
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
         input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
+        led::init(p.PIN_0, &spawner);
         spawner.spawn(modulator_task()).unwrap();
         spawner.spawn(input_task()).unwrap();
     });
