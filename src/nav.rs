@@ -1,8 +1,5 @@
-
-use crate::{
-    input::InputEvent,
-    modulator::{ModSlot, ModulatorConfig},
-};
+use crate::input::InputEvent;
+use crate::modulator::{ModSlot, ModulatorConfig};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SlotId {

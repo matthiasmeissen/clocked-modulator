@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use core::sync::atomic::{AtomicU16, AtomicBool, Ordering};
 use defmt::*;
 use embassy_executor::Executor;
 use embassy_rp::i2c;
@@ -24,22 +25,23 @@ mod input;
 mod led;
 mod nav;
 
-// Channels for inter-task communication
-static BPM_CHANNEL: Channel<CriticalSectionRawMutex, f32, 2> = Channel::new();                              // input → modulator (spsc)
-static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new();    // input → modulator (spsc)
-static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE], 8> = Channel::new();     // modulator → usb (spsc)
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();               // buttons + encoder → input (mpsc)
-static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();                  // input → display on Core 1 (spsc)
-static PLAYBACK_CHANNEL: Channel<CriticalSectionRawMutex, PlaybackState, 2> = Channel::new();               // input → modulator (spsc)
-static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();                           // input → modulator (spsc, one-shot)
-static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();  // modulator → led (spsc)
+// Atomic shared state - no channel contention
+pub static CURRENT_BPM: AtomicU16 = AtomicU16::new(120);
+pub static PLAYBACK_STATE: AtomicBool = AtomicBool::new(true); // true = playing
 
-// Each core needs its own stack and executor for independent async runtimes
+// Channels for less time-critical communication
+static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new();
+static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();
+static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
+static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
+static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
+static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE], 8> = Channel::new();
+
+// Each core needs its own stack and executor
 static mut CORE1_STACK: Stack<16384> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-// Snapshot of UI state sent from Core 0 to Core 1 for rendering
 #[derive(Clone, Copy)]
 struct DisplayState {
     bpm: u16,
@@ -47,82 +49,149 @@ struct DisplayState {
     playback: PlaybackState,
 }
 
-// Runs at 1kHz. Advances phasor, computes waveforms, sends USB packets every 8th tick.
+// Runs on Core 0 at 1kHz - timing critical
 #[embassy_executor::task]
 async fn modulator_task() {
     let usb_tx = USB_TX.sender();
-
-    let mut playback = PlaybackState::Playing;
-
+    
     let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
     let mut config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
-
+    
     let mut ticker = Ticker::every(Duration::from_micros(1000));
     let mut tick_count: u32 = 0;
-
+    
     let mut frame: ([u8; MIDI_FRAME_SIZE], [f32; NUM_MODULATORS]) = ([0; MIDI_FRAME_SIZE], [0.0; NUM_MODULATORS]);
-
+    
+    // Cache atomic values to minimize atomic operations
+    let mut current_bpm = CURRENT_BPM.load(Ordering::Relaxed);
+    let mut playing = PLAYBACK_STATE.load(Ordering::Relaxed);
+    
     loop {
         ticker.next().await;
-
-        if let Ok(new_bpm) = BPM_CHANNEL.try_receive() {
-            phasor.set_bpm(new_bpm);
+        
+        // Read atomics once per tick - very fast
+        let new_bpm = CURRENT_BPM.load(Ordering::Relaxed);
+        if new_bpm != current_bpm {
+            current_bpm = new_bpm;
+            phasor.set_bpm(current_bpm as f32);
         }
-
+        
+        let new_playing = PLAYBACK_STATE.load(Ordering::Relaxed);
+        if new_playing != playing {
+            playing = new_playing;
+        }
+        
+        // Check for config updates (less frequent)
         if let Ok(new_config) = CONFIG_CHANNEL.try_receive() {
             config = new_config;
         }
-
-        if let Ok(new_playback) = PLAYBACK_CHANNEL.try_receive() {
-            playback = new_playback;
-        }
-
+        
+        // Check for reset signal
         if let Ok(true) = RESET_CHANNEL.try_receive() {
             phasor.reset();
         }
-
-        if playback == PlaybackState::Playing {
+        
+        if playing {
             phasor.tick();
         }
-
+        
         tick_count += 1;
-
         
         if tick_count % 8 == 0 {
             frame = engine.compute_midi_bytes(&phasor, &config);
-            let (send, _ ) = frame;
+            let (send, _) = frame;
             let _ = usb_tx.try_send(send);
         }
-
+        
         if tick_count % 16 == 0 {
-            // Send LED values every tick (1kHz) — set_config is just a register write
             let (_, outputs) = frame;
             let _ = LED_VALUES.try_send(outputs);
         }
     }
 }
 
-// Runs on Core 1. Redraws display whenever Core 0 sends new state.
-// Blocking I2C writes here can never delay modulator or USB on Core 0.
+// Runs on Core 1 - handles display updates
 #[embassy_executor::task]
 async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Blocking>) {
     let mut disp = display::Display::new(i2c);
-
-    let mut state = DisplayState { bpm: 120, nav: nav::NavState::Overview, playback: PlaybackState::Playing };
+    
+    let mut state = DisplayState { 
+        bpm: 120, 
+        nav: nav::NavState::Overview, 
+        playback: PlaybackState::Playing 
+    };
     disp.draw_main(state.bpm as f32, &state.nav);
-
+    
     loop {
         state = DISPLAY_UPDATE.receive().await;
         disp.draw_main(state.bpm as f32, &state.nav);
     }
 }
 
+// Runs on Core 1 - handles input processing
+#[embassy_executor::task]
+async fn input_task() {
+    let mut nav = nav::NavState::Overview;
+    let mut config = modulator::ModulatorConfig::default();
+    let mut bpm: u16 = CURRENT_BPM.load(Ordering::Relaxed);
+    let mut playback = if PLAYBACK_STATE.load(Ordering::Relaxed) {
+        PlaybackState::Playing
+    } else {
+        PlaybackState::Paused
+    };
+    let mut reset_bar = false;
+    let mut tap_tempo = tap_tempo::TapTempo::new();
+    
+    loop {
+        let event = INPUT_EVENTS.receive().await;
+        
+        let prev_bpm = bpm;
+        let prev_playback = playback;
+        
+        nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
+        
+        // Handle tap tempo specially
+        if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
+            if let Some(new_bpm) = tap_tempo.tap() {
+                bpm = new_bpm;
+            }
+        }
+        
+        // Update atomic variables (very fast, no blocking)
+        if bpm != prev_bpm {
+            CURRENT_BPM.store(bpm, Ordering::Relaxed);
+        }
+        if playback != prev_playback {
+            PLAYBACK_STATE.store(
+                playback == PlaybackState::Playing, 
+                Ordering::Relaxed
+            );
+        }
+        
+        // Send config updates (less frequent)
+        let _ = CONFIG_CHANNEL.try_send(config);
+        
+        // Send reset if needed
+        if reset_bar {
+            let _ = RESET_CHANNEL.try_send(true);
+            reset_bar = false;
+        }
+        
+        // Update display
+        let _ = DISPLAY_UPDATE.try_send(DisplayState { 
+            bpm, 
+            nav, 
+            playback 
+        });
+    }
+}
+
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
-
-    // Input pins (Core 0)
+    
+    // Input pins - will be used by Core 1
     let e1_clk = Input::new(p.PIN_14, Pull::Up);
     let e1_dta = Input::new(p.PIN_15, Pull::Up);
     let e2_clk = Input::new(p.PIN_12, Pull::Up);
@@ -133,71 +202,37 @@ fn main() -> ! {
     let b4 = Input::new(p.PIN_19, Pull::Up);
     let b5 = Input::new(p.PIN_11, Pull::Up);
     let b6 = Input::new(p.PIN_10, Pull::Up);
-
-    // Display I2C — moves to Core 1
+    
+    // Display I2C - moves to Core 1
     let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = 400_000;
     let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
-
-    // Core 1: display only — runs its own executor so I2C can't block Core 0
+    
+    // Core 1: input handling and display
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
+                // Initialize input on Core 1
+                input::init_encoder(
+                    spawner, 
+                    e1_clk, e1_dta, 
+                    e2_clk, e2_dta, 
+                    b1, b2, b3, b4, b5, b6
+                );
                 spawner.spawn(display_task(i2c)).unwrap();
+                spawner.spawn(input_task()).unwrap();
             });
         },
     );
-
-    // Core 0: modulator, USB, encoder, button, input handling
+    
+    // Core 0: timing-critical tasks only
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
-        input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
         led::init(p.PWM_SLICE0, p.PIN_0, LED_VALUES.receiver(), &spawner);
         spawner.spawn(modulator_task()).unwrap();
-        spawner.spawn(input_task()).unwrap();
     });
-}
-
-// Handles input events, runs the nav state machine, and fans out updates to
-// modulator (bpm + config channels) and display (Core 1).
-#[embassy_executor::task]
-async fn input_task() {
-    let mut nav = nav::NavState::Overview;
-    let mut config = modulator::ModulatorConfig::default();
-    let mut bpm: u16 = 120;
-    let mut playback = PlaybackState::Playing;
-    let mut reset_bar = false;
-    let mut tap_tempo = tap_tempo::TapTempo::new();
-
-    loop {
-        let event = INPUT_EVENTS.receive().await;
-
-        let prev_bpm = bpm;
-        let prev_playback = playback;
-
-        nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
-
-        if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
-            if let Some(new_bpm) = tap_tempo.tap() {
-                bpm = new_bpm;
-            }
-        }
-
-        if bpm != prev_bpm {
-            let _ = BPM_CHANNEL.try_send(bpm as f32);
-        }
-        let _ = CONFIG_CHANNEL.try_send(config);
-        if playback != prev_playback {
-            let _ = PLAYBACK_CHANNEL.try_send(playback);
-        }
-        if reset_bar {
-            let _ = RESET_CHANNEL.try_send(true);
-            reset_bar = false;
-        }
-        let _ = DISPLAY_UPDATE.try_send(DisplayState { bpm, nav, playback });
-    }
 }
