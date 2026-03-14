@@ -11,7 +11,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
-use crate::modulator::{MIDI_FRAME_SIZE, NUM_MODULATORS};
+use crate::modulator::{MIDI_FRAME_SIZE, ModulatorFrame, NUM_MODULATORS};
 use crate::nav::PlaybackState;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -49,19 +49,27 @@ struct DisplayState {
     playback: PlaybackState,
 }
 
-// Runs on Core 0 at 1kHz - timing critical
+// Runs on Core 0 at 250Hz - control rate, not audio rate
+const TICK_RATE: f32 = 250.0;
+const TICK_INTERVAL_US: u64 = 4000; // 1_000_000 / 250
+const USB_SEND_EVERY: u32 = 2;      // 250 / 2 = 125Hz
+const LED_SEND_EVERY: u32 = 4;      // 250 / 4 ≈ 62.5Hz
+
 #[embassy_executor::task]
 async fn modulator_task() {
     let usb_tx = USB_TX.sender();
-    
-    let mut phasor = phasor::PhasorBank::new(120.0, 1000.0);
+
+    let mut phasor = phasor::PhasorBank::new(120.0, TICK_RATE);
     let mut config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
-    
-    let mut ticker = Ticker::every(Duration::from_micros(1000));
+
+    let mut ticker = Ticker::every(Duration::from_micros(TICK_INTERVAL_US));
     let mut tick_count: u32 = 0;
-    
-    let mut frame: ([u8; MIDI_FRAME_SIZE], [f32; NUM_MODULATORS]) = ([0; MIDI_FRAME_SIZE], [0.0; NUM_MODULATORS]);
+
+    let mut frame = ModulatorFrame {
+        midi_bytes: [0; MIDI_FRAME_SIZE],
+        outputs: [0.0; NUM_MODULATORS],
+    };
     
     // Cache atomic values to minimize atomic operations
     let mut current_bpm = CURRENT_BPM.load(Ordering::Relaxed);
@@ -98,15 +106,13 @@ async fn modulator_task() {
         
         tick_count += 1;
         
-        if tick_count % 8 == 0 {
+        if tick_count % USB_SEND_EVERY == 0 {
             frame = engine.compute_midi_bytes(&phasor, &config);
-            let (send, _) = frame;
-            let _ = usb_tx.try_send(send);
+            let _ = usb_tx.try_send(frame.midi_bytes);
         }
-        
-        if tick_count % 16 == 0 {
-            let (_, outputs) = frame;
-            let _ = LED_VALUES.try_send(outputs);
+
+        if tick_count % LED_SEND_EVERY == 0 {
+            let _ = LED_VALUES.try_send(frame.outputs);
         }
     }
 }
