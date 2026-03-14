@@ -15,4 +15,5 @@ rustflags = [
 target = "thumbv8m.main-none-eabihf"
 
 [env]
-DEFMT_LOG = "debug"
+# Use "debug" to show debugging
+DEFMT_LOG = "off"

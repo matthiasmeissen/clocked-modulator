@@ -31,6 +31,7 @@ static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Ch
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();                  // input → display on Core 1 (spsc)
 static PLAYBACK_CHANNEL: Channel<CriticalSectionRawMutex, PlaybackState, 2> = Channel::new();               // input → modulator (spsc)
 static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();                           // input → modulator (spsc, one-shot)
+static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();  // modulator → led (spsc)
 
 // Each core needs its own stack and executor for independent async runtimes
 static mut CORE1_STACK: Stack<16384> = Stack::new();
@@ -85,9 +86,16 @@ async fn modulator_task() {
 
         tick_count += 1;
 
+        
         if tick_count % 8 == 0 {
             let frame = engine.compute_midi_bytes(&phasor, &config);
             let _ = usb_tx.try_send(frame);
+        }
+
+        if tick_count % 16 == 0 {
+            // Send LED values every tick (1kHz) — set_config is just a register write
+            let outputs = engine.compute(&phasor, &config);
+            let _ = LED_VALUES.try_send(outputs);
         }
     }
 }
@@ -145,7 +153,7 @@ fn main() -> ! {
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
         input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
-        led::init(p.PIN_0, &spawner);
+        led::init(p.PWM_SLICE0, p.PIN_0, LED_VALUES.receiver(), &spawner);
         spawner.spawn(modulator_task()).unwrap();
         spawner.spawn(input_task()).unwrap();
     });
