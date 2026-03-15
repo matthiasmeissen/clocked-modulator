@@ -238,7 +238,7 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
-        led::init(p.PWM_SLICE0, p.PIN_0, LED_VALUES.receiver(), &spawner);
+        led::init(p.PWM_SLICE0, p.PIN_0, p.PIN_1, p.PWM_SLICE1, p.PIN_2, p.PIN_3, LED_VALUES.receiver(), &spawner);
         spawner.spawn(modulator_task()).unwrap();
     });
 }
