@@ -49,10 +49,10 @@ impl Multiplier {
 
     pub fn name(self) -> &'static str {
         match self {
-            Multiplier::D4 => "D4",
-            Multiplier::D2 => "D2",
-            Multiplier::X1 => "X1",
-            Multiplier::X2 => "X2",
+            Multiplier::D4 => "/4",
+            Multiplier::D2 => "/2",
+            Multiplier::X1 => "x1",
+            Multiplier::X2 => "x2",
         }
     }
 }

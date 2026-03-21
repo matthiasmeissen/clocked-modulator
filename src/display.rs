@@ -12,6 +12,7 @@ use sh1106::{Builder, interface::I2cInterface, prelude::*};
 use tinybmp::Bmp;
 
 use crate::modulator::{ModSlot, ModulatorConfig, Waveshape};
+use crate::phasor::Multiplier;
 use crate::nav::{NavState, SlotId};
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
@@ -54,11 +55,11 @@ impl Display {
     fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
         self.draw_element_text(get_slot_position(1), "Main", false);
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_wave_teaser(get_slot_position(3), "A", config.slots[0].wave);
-        self.draw_element_wave_teaser(get_slot_position(4), "B", config.slots[1].wave);
+        self.draw_element_wave_teaser(get_slot_position(3), "A", &config.slots[0]);
+        self.draw_element_wave_teaser(get_slot_position(4), "B", &config.slots[1]);
         self.draw_element_text(get_slot_position(6), "TEMP", true);
-        self.draw_element_wave_teaser(get_slot_position(7), "C", config.slots[2].wave);
-        self.draw_element_wave_teaser(get_slot_position(8), "D", config.slots[3].wave);
+        self.draw_element_wave_teaser(get_slot_position(7), "C", &config.slots[2]);
+        self.draw_element_wave_teaser(get_slot_position(8), "D", &config.slots[3]);
     }
 
     fn draw_screen_tapmode(&mut self, bpm: f32) {
@@ -190,9 +191,24 @@ impl Display {
         self.draw_element_outline_column(point);
     }
 
-    /// Wave teaser cell: outline with waveshape sprite and label
-    fn draw_element_wave_teaser(&mut self, point: Point, label: &'static str, shape: Waveshape) {
-        self.draw_waveshape(Point::new(point.x + 9, point.y + 6), shape);
+    /// Wave teaser cell: outline with waveshape sprite, multiplier, and label
+    fn draw_element_wave_teaser(&mut self, point: Point, label: &'static str, slot: &ModSlot) {
+        self.draw_waveshape(Point::new(point.x + 9, point.y + 5), slot.wave);
+
+        let mul_style = TextStyleBuilder::new()
+            .alignment(Alignment::Right)
+            .baseline(Baseline::Bottom)
+            .build();
+
+        Text::with_text_style(
+            slot.mul.name(),
+            Point::new(point.x + 28, point.y + 22),
+            CHARACTER_STYLE,
+            mul_style,
+        )
+        .draw(&mut self.driver)
+        .ok();
+
         self.draw_element_outline_with_label(point, label);
     }
 
