@@ -6,7 +6,6 @@ use embassy_usb::{Builder, Config};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_futures::join::join;
-use embassy_time::{Duration, Instant, Timer};
 use static_cell::StaticCell;
 
 use crate::modulator::{MIDI_FRAME_SIZE, MIDI_PACKET_SIZE};
@@ -59,33 +58,9 @@ async fn usb_task(
     let usb_fut = usb.run();
     
     let tx_fut = async {
-        let mut last_frame_time = Instant::now();
-        const FRAME_INTERVAL: Duration = Duration::from_micros(8000); // Exactly 125Hz (8ms)
-        const TOLERANCE: Duration = Duration::from_micros(1000); // 1ms tolerance
-        
         loop {
             let frame = tx_recv.receive().await;
-            
-            // Frame timing stabilization
-            let now = Instant::now();
-            let elapsed = now.duration_since(last_frame_time);
-            
-            // If we're within tolerance of the next frame time, wait precisely
-            if elapsed < FRAME_INTERVAL {
-                let wait_time = FRAME_INTERVAL - elapsed;
-                if wait_time > TOLERANCE {
-                    // Large wait - use timer for precision
-                    Timer::after(wait_time).await;
-                } else {
-                    // Small wait - busy wait for minimal jitter
-                    while Instant::now().duration_since(last_frame_time) < FRAME_INTERVAL {
-                        cortex_m::asm::nop();
-                    }
-                }
-            }
-            
-            last_frame_time = Instant::now();
-            
+
             // Send each 4-byte MIDI packet
             for chunk in frame.chunks(MIDI_PACKET_SIZE) {
                 let _ = sender.write_packet(chunk).await;

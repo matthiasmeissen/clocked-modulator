@@ -156,29 +156,32 @@ async fn input_task() {
         
         let prev_bpm = bpm;
         let prev_playback = playback;
-        
+        let prev_config = config;
+
         nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
-        
+
         // Handle tap tempo specially
         if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
             if let Some(new_bpm) = tap_tempo.tap() {
                 bpm = new_bpm;
             }
         }
-        
+
         // Update atomic variables (very fast, no blocking)
         if bpm != prev_bpm {
             CURRENT_BPM.store(bpm, Ordering::Relaxed);
         }
         if playback != prev_playback {
             PLAYBACK_STATE.store(
-                playback == PlaybackState::Playing, 
+                playback == PlaybackState::Playing,
                 Ordering::Relaxed
             );
         }
-        
-        // Send config updates (less frequent)
-        let _ = CONFIG_CHANNEL.try_send(config);
+
+        // Only send config when it actually changed
+        if config != prev_config {
+            let _ = CONFIG_CHANNEL.try_send(config);
+        }
         
         // Send reset if needed
         if reset_bar {
