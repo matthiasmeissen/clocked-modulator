@@ -135,7 +135,7 @@ async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c:
     }
 }
 
-// Runs on Core 1 - handles input processing
+// Runs on Core 0 - handles input processing
 #[embassy_executor::task]
 async fn input_task() {
     let mut nav = nav::NavState::Overview;
@@ -197,7 +197,7 @@ async fn input_task() {
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
     
-    // Input pins - will be used by Core 1
+    // Input pins (Core 0)
     let e1_clk = Input::new(p.PIN_14, Pull::Up);
     let e1_dta = Input::new(p.PIN_15, Pull::Up);
     let e2_clk = Input::new(p.PIN_12, Pull::Up);
@@ -208,37 +208,31 @@ fn main() -> ! {
     let b4 = Input::new(p.PIN_19, Pull::Up);
     let b5 = Input::new(p.PIN_11, Pull::Up);
     let b6 = Input::new(p.PIN_10, Pull::Up);
-    
+
     // Display I2C - moves to Core 1
     let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = 400_000;
     let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
-    
-    // Core 1: input handling and display
+
+    // Core 1: display only — blocking I2C can't stall input or USB
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                // Initialize input on Core 1
-                input::init_encoder(
-                    spawner, 
-                    e1_clk, e1_dta, 
-                    e2_clk, e2_dta, 
-                    b1, b2, b3, b4, b5, b6
-                );
                 spawner.spawn(display_task(i2c)).unwrap();
-                spawner.spawn(input_task()).unwrap();
             });
         },
     );
-    
-    // Core 0: timing-critical tasks only
+
+    // Core 0: modulator, USB, input, LEDs
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         usb::init(p.USB, USB_TX.receiver(), spawner);
+        input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
         led::init(p.PWM_SLICE0, p.PIN_0, p.PIN_1, p.PWM_SLICE1, p.PIN_2, p.PIN_3, LED_VALUES.receiver(), &spawner);
         spawner.spawn(modulator_task()).unwrap();
+        spawner.spawn(input_task()).unwrap();
     });
 }
