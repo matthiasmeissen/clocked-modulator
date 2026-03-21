@@ -9,7 +9,7 @@ use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{Stack, spawn_core1};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 use static_cell::StaticCell;
 use crate::modulator::{MIDI_FRAME_SIZE, ModulatorFrame, NUM_MODULATORS};
 use crate::nav::PlaybackState;
@@ -60,7 +60,7 @@ const LED_SEND_EVERY: u32 = 4;      // 250 / 4 ≈ 62.5Hz
 async fn modulator_task() {
     let usb_tx = USB_TX.sender();
 
-    let mut phasor = phasor::PhasorBank::new(120.0, TICK_RATE);
+    let mut phasor = phasor::PhasorBank::new(120.0);
     let mut config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
 
@@ -71,42 +71,59 @@ async fn modulator_task() {
         midi_bytes: [0; MIDI_FRAME_SIZE],
         outputs: [0.0; NUM_MODULATORS],
     };
-    
+
+    let start = Instant::now();
+    let mut pause_offset: f32 = 0.0;
+    let mut pause_start: Option<Instant> = None;
+
     // Cache atomic values to minimize atomic operations
     let mut current_bpm = CURRENT_BPM.load(Ordering::Relaxed);
     let mut playing = PLAYBACK_STATE.load(Ordering::Relaxed);
-    
+
     loop {
         ticker.next().await;
-        
-        // Read atomics once per tick - very fast
-        let new_bpm = CURRENT_BPM.load(Ordering::Relaxed);
-        if new_bpm != current_bpm {
-            current_bpm = new_bpm;
-            phasor.set_bpm(current_bpm as f32);
-        }
-        
+
+        // Read atomics once per tick
         let new_playing = PLAYBACK_STATE.load(Ordering::Relaxed);
         if new_playing != playing {
+            if new_playing {
+                // Resuming: accumulate paused duration
+                if let Some(ps) = pause_start {
+                    pause_offset += ps.elapsed().as_micros() as f32 / 1_000_000.0;
+                }
+                pause_start = None;
+            } else {
+                // Pausing: record when we paused
+                pause_start = Some(Instant::now());
+            }
             playing = new_playing;
         }
-        
+
+        let new_bpm = CURRENT_BPM.load(Ordering::Relaxed);
+        if new_bpm != current_bpm {
+            let elapsed = start.elapsed().as_micros() as f32 / 1_000_000.0 - pause_offset;
+            current_bpm = new_bpm;
+            phasor.set_bpm(current_bpm as f32, elapsed);
+        }
+
         // Check for config updates (less frequent)
         if let Ok(new_config) = CONFIG_CHANNEL.try_receive() {
             config = new_config;
         }
-        
+
         // Check for reset signal
         if let Ok(true) = RESET_CHANNEL.try_receive() {
-            phasor.reset();
+            let elapsed = start.elapsed().as_micros() as f32 / 1_000_000.0 - pause_offset;
+            phasor.reset(elapsed);
         }
-        
+
         if playing {
-            phasor.tick();
+            let elapsed = start.elapsed().as_micros() as f32 / 1_000_000.0 - pause_offset;
+            phasor.update(elapsed);
         }
-        
+
         tick_count += 1;
-        
+
         if tick_count % USB_SEND_EVERY == 0 {
             frame = engine.compute_midi_bytes(&phasor, &config);
             let _ = usb_tx.try_send(frame.midi_bytes);
