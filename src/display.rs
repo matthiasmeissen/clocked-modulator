@@ -193,16 +193,16 @@ impl Display {
 
     /// Wave teaser cell: outline with waveshape sprite, multiplier, and label
     fn draw_element_wave_teaser(&mut self, point: Point, label: &'static str, slot: &ModSlot) {
-        self.draw_waveshape(Point::new(point.x + 9, point.y + 5), slot.wave);
+        self.draw_waveshape(Point::new(point.x + 9, point.y + 12), slot.wave);
 
         let mul_style = TextStyleBuilder::new()
-            .alignment(Alignment::Right)
-            .baseline(Baseline::Bottom)
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
             .build();
 
         Text::with_text_style(
             slot.mul.name(),
-            Point::new(point.x + 28, point.y + 22),
+            Point::new(point.x + 15, point.y + 2),
             CHARACTER_STYLE,
             mul_style,
         )
