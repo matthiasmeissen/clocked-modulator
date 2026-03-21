@@ -47,6 +47,7 @@ struct DisplayState {
     bpm: u16,
     nav: nav::NavState,
     playback: PlaybackState,
+    config: modulator::ModulatorConfig,
 }
 
 // Runs on Core 0 at 250Hz - control rate, not audio rate
@@ -122,16 +123,17 @@ async fn modulator_task() {
 async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Blocking>) {
     let mut disp = display::Display::new(i2c);
     
-    let mut state = DisplayState { 
-        bpm: 120, 
-        nav: nav::NavState::Overview, 
-        playback: PlaybackState::Playing 
+    let mut state = DisplayState {
+        bpm: 120,
+        nav: nav::NavState::Overview,
+        playback: PlaybackState::Playing,
+        config: modulator::ModulatorConfig::default(),
     };
-    disp.draw_main(state.bpm as f32, &state.nav);
+    disp.draw_main(state.bpm as f32, &state.nav, &state.config);
     
     loop {
         state = DISPLAY_UPDATE.receive().await;
-        disp.draw_main(state.bpm as f32, &state.nav);
+        disp.draw_main(state.bpm as f32, &state.nav, &state.config);
     }
 }
 
@@ -185,10 +187,11 @@ async fn input_task() {
         }
         
         // Update display
-        let _ = DISPLAY_UPDATE.try_send(DisplayState { 
-            bpm, 
-            nav, 
-            playback 
+        let _ = DISPLAY_UPDATE.try_send(DisplayState {
+            bpm,
+            nav,
+            playback,
+            config,
         });
     }
 }
