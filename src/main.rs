@@ -31,7 +31,7 @@ pub static CURRENT_BPM: AtomicU16 = AtomicU16::new(120);
 pub static PLAYBACK_STATE: AtomicBool = AtomicBool::new(true); // true = playing
 
 // Channels for less time-critical communication
-static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 2> = Channel::new();
+static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 4> = Channel::new();
 static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();
 static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
