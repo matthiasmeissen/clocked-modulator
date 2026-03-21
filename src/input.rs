@@ -74,9 +74,9 @@ async fn button_task(mut button: Input<'static>, event: InputEvent) {
 #[embassy_executor::task(pool_size = 2)]
 async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>, event_cw: InputEvent, event_ac: InputEvent) {
     let mut encoder = RotaryEncoder::new(pin_a, pin_b).into_standard_mode();
-    
+
     loop {
-        Timer::after(Duration::from_millis(1)).await;
+        Timer::after(Duration::from_millis(2)).await;
         match encoder.update() {
             Direction::Clockwise => {
                 let _ = INPUT_EVENTS.try_send(event_cw);

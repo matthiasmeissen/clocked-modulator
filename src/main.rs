@@ -9,6 +9,7 @@ use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{Stack, spawn_core1};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Ticker};
 use static_cell::StaticCell;
 use crate::modulator::{MIDI_FRAME_SIZE, ModulatorFrame, NUM_MODULATORS};
@@ -35,7 +36,7 @@ static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new()
 static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
 static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
-static USB_TX: Channel<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE], 8> = Channel::new();
+static USB_TX: Signal<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE]> = Signal::new();
 
 // Each core needs its own stack and executor
 static mut CORE1_STACK: Stack<16384> = Stack::new();
@@ -58,8 +59,6 @@ const LED_SEND_EVERY: u32 = 4;      // 250 / 4 ≈ 62.5Hz
 
 #[embassy_executor::task]
 async fn modulator_task() {
-    let usb_tx = USB_TX.sender();
-
     let mut phasor = phasor::PhasorBank::new(120.0);
     let mut config = modulator::ModulatorConfig::default();
     let engine = modulator::ModulatorEngine;
@@ -126,7 +125,7 @@ async fn modulator_task() {
 
         if tick_count % USB_SEND_EVERY == 0 {
             frame = engine.compute_midi_bytes(&phasor, &config);
-            let _ = usb_tx.try_send(frame.midi_bytes);
+            USB_TX.signal(frame.midi_bytes);
         }
 
         if tick_count % LED_SEND_EVERY == 0 {
@@ -252,7 +251,7 @@ fn main() -> ! {
     // Core 0: modulator, USB, input, LEDs
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
-        usb::init(p.USB, USB_TX.receiver(), spawner);
+        usb::init(p.USB, spawner);
         input::init_encoder(spawner, e1_clk, e1_dta, e2_clk, e2_dta, b1, b2, b3, b4, b5, b6);
         led::init(p.PWM_SLICE0, p.PIN_0, p.PIN_1, p.PWM_SLICE1, p.PIN_2, p.PIN_3, LED_VALUES.receiver(), &spawner);
         spawner.spawn(modulator_task()).unwrap();
