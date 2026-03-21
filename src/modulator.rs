@@ -106,6 +106,11 @@ impl Default for ModulatorConfig {
     }
 }
 
+pub struct ModulatorFrame {
+    pub midi_bytes: [u8; MIDI_FRAME_SIZE],
+    pub outputs: [f32; NUM_MODULATORS],
+}
+
 pub struct ModulatorEngine;
 
 impl ModulatorEngine {
@@ -121,9 +126,9 @@ impl ModulatorEngine {
 
     /// Convert 4 outputs into 8 USB MIDI packets (14-bit CC: MSB + LSB per slot).
     /// Each output (0.0–1.0) maps to 0–16383, split across CC N (MSB) and CC N+32 (LSB).
-    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> [u8; MIDI_FRAME_SIZE] {
+    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> ModulatorFrame {
         let outputs = self.compute(phasor, config);
-        let mut buf = [0u8; MIDI_FRAME_SIZE];
+        let mut midi_bytes = [0u8; MIDI_FRAME_SIZE];
 
         for (i, &output) in outputs.iter().enumerate() {
             let value_14bit = (output.clamp(0.0, 1.0) * 16383.0) as u16;
@@ -133,19 +138,19 @@ impl ModulatorEngine {
             let base = i * 8;
 
             // MSB packet: CC i on channel 1
-            buf[base]     = 0x0B; // cable 0, CIN = Control Change
-            buf[base + 1] = 0xB0; // CC, channel 1
-            buf[base + 2] = i as u8;
-            buf[base + 3] = msb;
+            midi_bytes[base]     = 0x0B; // cable 0, CIN = Control Change
+            midi_bytes[base + 1] = 0xB0; // CC, channel 1
+            midi_bytes[base + 2] = i as u8;
+            midi_bytes[base + 3] = msb;
 
             // LSB packet: CC i+32 on channel 1
-            buf[base + 4] = 0x0B;
-            buf[base + 5] = 0xB0;
-            buf[base + 6] = (i + 32) as u8;
-            buf[base + 7] = lsb;
+            midi_bytes[base + 4] = 0x0B;
+            midi_bytes[base + 5] = 0xB0;
+            midi_bytes[base + 6] = (i + 32) as u8;
+            midi_bytes[base + 7] = lsb;
         }
 
-        buf
+        ModulatorFrame { midi_bytes, outputs }
     }
 }
 

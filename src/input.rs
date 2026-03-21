@@ -1,5 +1,5 @@
 use defmt::*;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Timer};
 use embassy_rp::gpio::Input;
 use rotary_encoder_embedded::{RotaryEncoder, Direction};
 
@@ -58,35 +58,31 @@ pub fn init_encoder(
 #[embassy_executor::task(pool_size = 6)]
 async fn button_task(mut button: Input<'static>, event: InputEvent) {
     let debounce = Duration::from_millis(50);
-
+    
     loop {
         button.wait_for_low().await;
         Timer::after(debounce).await;
-
+        
         if button.is_low() {
             button.wait_for_high().await;
             Timer::after(debounce).await;
             let _ = INPUT_EVENTS.try_send(event);
-            info!("{}", event);
         }
     }
 }
 
-// TODO: Fix this to handle both encoders (current implementation only for testing)
 #[embassy_executor::task(pool_size = 2)]
 async fn encoder_task(pin_a: Input<'static>, pin_b: Input<'static>, event_cw: InputEvent, event_ac: InputEvent) {
     let mut encoder = RotaryEncoder::new(pin_a, pin_b).into_standard_mode();
-
+    
     loop {
         Timer::after(Duration::from_millis(1)).await;
         match encoder.update() {
             Direction::Clockwise => {
                 let _ = INPUT_EVENTS.try_send(event_cw);
-                info!("{}", event_cw)
             }
             Direction::Anticlockwise => {
                 let _ = INPUT_EVENTS.try_send(event_ac);
-                info!("{}", event_ac)
             }
             Direction::None => {}
         }
