@@ -22,6 +22,7 @@ const WAVESHAPES_BMP: &[u8] = include_bytes!("../assets/export/waveshapes_1bit.b
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
 const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
+// TO DO: Add center text alignment as style
 
 pub enum SpritesheetIndex {
     Normalized(f32),
@@ -54,64 +55,72 @@ impl Display {
 
     fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
         self.draw_element_text(get_slot_position(1), "Main", false);
+
         self.draw_element_bpm(get_slot_position(2), bpm);
         self.draw_element_wave_teaser(get_slot_position(3), "A", &config.slots[0]);
         self.draw_element_wave_teaser(get_slot_position(4), "B", &config.slots[1]);
-        self.draw_element_text(get_slot_position(6), "TEMP", true);
+
+        self.draw_element_outline_with_label(get_slot_position(6), "-");
         self.draw_element_wave_teaser(get_slot_position(7), "C", &config.slots[2]);
         self.draw_element_wave_teaser(get_slot_position(8), "D", &config.slots[3]);
     }
 
     fn draw_screen_tapmode(&mut self, bpm: f32) {
         self.draw_element_text(get_slot_position(1), "Tap", false);
+
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Tap", true);
-        self.draw_element_text(get_slot_position(6), "REST", true);
-        self.draw_element_text(get_slot_position(7), "PAUS", true);
-        self.draw_element_text(get_slot_position(8), "PLAY", true);
+        self.draw_element_outline_with_label(get_slot_position(3), "UP");
+        self.draw_element_outline_with_label(get_slot_position(4), "TAP");
+
+        self.draw_element_outline_with_label(get_slot_position(6), "RES");
+        self.draw_element_outline_with_label(get_slot_position(7), "PAUS");
+        self.draw_element_outline_with_label(get_slot_position(8), "PLAY");
     }
 
     fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), false);
 
-        self.draw_element_values(get_slot_position(2), "Wave", draft.wave.name());
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Res", true);
+        self.draw_element_wave(get_slot_position(2), "WAVE", draft.wave);
+        self.draw_element_outline_with_label(get_slot_position(3), "UP");
+        self.draw_element_outline_with_label(get_slot_position(4), "RES");
 
-        self.draw_element_values(get_slot_position(6), "Mult", draft.mul.name());
-        self.draw_element_text(get_slot_position(7), "Ok", true);
-        self.draw_element_text(get_slot_position(8), "Rng", true);
+        self.draw_element_value(get_slot_position(6), "MULT", draft.mul.name());
+        self.draw_element_outline_with_label(get_slot_position(7), "OK");
+        self.draw_element_outline_with_label(get_slot_position(8), "RNG");
     }
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), false);
 
         self.draw_element_range(get_slot_position(2), draft.min, draft.max);
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Res", true);
+        self.draw_element_outline_with_label(get_slot_position(3), "UP");
+        self.draw_element_outline_with_label(get_slot_position(4), "RES");
 
-        self.draw_element_text(get_slot_position(7), "Ok", true);
-        self.draw_element_text(get_slot_position(8), "Wave", true);
+        self.draw_element_outline_with_label(get_slot_position(7), "OK");
+        self.draw_element_outline_with_label(get_slot_position(8), "WAVE");
     }
 
-    // TO DO: Convert into generic draw float element
     /// Draws a grid cell with bpm as text
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        Text::with_baseline(
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+
+        Text::with_text_style(
             s,
-            Point::new(point.x + 3, point.y + 2),
+            Point::new(point.x + 14, point.y + 7),
             CHARACTER_STYLE,
-            Baseline::Top,
+            text_style,
         )
         .draw(&mut self.driver)
         .ok();
 
-        self.draw_element_outline(point);
+        self.draw_element_outline_with_label(point, "BPM");
     }
 
     /// Draws a grid cell with a text
@@ -130,27 +139,30 @@ impl Display {
         }
     }
 
+    /// Draws a grid cell with wave
+    fn draw_element_wave(&mut self, point: Point, label: &'static str, wave: Waveshape) {
+        self.draw_waveshape(Point::new(point.x + 9, point.y + 8), wave);
+
+        self.draw_element_outline_with_label(point, label);
+    }
+
     /// Draws a grid cell with text label and value
-    fn draw_element_values(&mut self, point: Point, label: &'static str, value: &'static str) {
-        Text::with_baseline(
-            label,
-            Point::new(point.x + 3, point.y + 2),
-            CHARACTER_STYLE,
-            Baseline::Top,
-        )
-        .draw(&mut self.driver)
-        .ok();
+    fn draw_element_value(&mut self, point: Point, label: &'static str, value: &'static str) {
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
 
-        Text::with_baseline(
+        Text::with_text_style(
             value,
-            Point::new(point.x + 3, point.y + 19),
+            Point::new(point.x + 14, point.y + 7),
             CHARACTER_STYLE,
-            Baseline::Top,
+            text_style,
         )
         .draw(&mut self.driver)
         .ok();
 
-        self.draw_element_outline(point);
+        self.draw_element_outline_with_label(point, label);
     }
 
     /// Draw two grid cells as column with range adjust
