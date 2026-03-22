@@ -18,6 +18,7 @@ use crate::phasor::Multiplier;
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
 const WAVESHAPES_BMP: &[u8] = include_bytes!("../assets/export/waveshapes_1bit.bmp");
+const ICONS_BMP: &[u8] = include_bytes!("../assets/export/icons_1bit.bmp");
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
@@ -27,6 +28,17 @@ const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(Binary
 pub enum SpritesheetIndex {
     Normalized(f32),
     Index(usize),
+}
+
+enum IconSprite {
+    arrow_up,
+    cross,
+    check,
+    range,
+    wave,
+    pause,
+    play,
+    tap,
 }
 
 pub struct Display {
@@ -69,35 +81,35 @@ impl Display {
         self.draw_element_text(get_slot_position(1), "TAP", "");
 
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_outline_with_label(get_slot_position(3), "UP");
-        self.draw_element_outline_with_label(get_slot_position(4), "TAP");
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "TAP", IconSprite::tap);
 
-        self.draw_element_outline_with_label(get_slot_position(6), "RES");
-        self.draw_element_outline_with_label(get_slot_position(7), "PAUS");
-        self.draw_element_outline_with_label(get_slot_position(8), "PLAY");
+        self.draw_element_icon(get_slot_position(6), "RES", IconSprite::cross);
+        self.draw_element_icon(get_slot_position(7), "PAUS", IconSprite::pause);
+        self.draw_element_icon(get_slot_position(8), "PLAY", IconSprite::play);
     }
 
     fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), "WAVE");
 
         self.draw_element_wave(get_slot_position(2), "WAVE", draft.wave);
-        self.draw_element_outline_with_label(get_slot_position(3), "UP");
-        self.draw_element_outline_with_label(get_slot_position(4), "RES");
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
 
         self.draw_element_value(get_slot_position(6), "MULT", draft.mul.name());
-        self.draw_element_outline_with_label(get_slot_position(7), "OK");
-        self.draw_element_outline_with_label(get_slot_position(8), "RNG");
+        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
+        self.draw_element_icon(get_slot_position(8), "RNG", IconSprite::range);
     }
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_text(get_slot_position(1), slot.label(), "RNG");
 
         self.draw_element_range(get_slot_position(2), draft.min, draft.max);
-        self.draw_element_outline_with_label(get_slot_position(3), "UP");
-        self.draw_element_outline_with_label(get_slot_position(4), "RES");
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
 
-        self.draw_element_outline_with_label(get_slot_position(7), "OK");
-        self.draw_element_outline_with_label(get_slot_position(8), "WAVE");
+        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
+        self.draw_element_icon(get_slot_position(8), "WAVE", IconSprite::wave);
     }
 
     /// Draws a grid cell with bpm as text
@@ -225,6 +237,20 @@ impl Display {
         )
         .draw(&mut self.driver)
         .ok();
+
+        self.draw_element_outline_with_label(point, label);
+    }
+
+    fn draw_element_icon(&mut self, point: Point, label: &'static str, icon: IconSprite) {
+        let index = icon as usize;
+        self.draw_sprite(
+            Point::new(point.x + 10, point.y + 6),
+            SpritesheetIndex::Index(index),
+            8,
+            11,
+            11,
+            ICONS_BMP,
+        );
 
         self.draw_element_outline_with_label(point, label);
     }
