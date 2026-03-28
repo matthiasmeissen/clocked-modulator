@@ -19,7 +19,8 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
             i2c,
             addr,
             buffer: [0u8; 1024],
-            prev_buffer: [0xFF; 1024], // Force first flush to send all pages
+            // Mismatch with zero-initialized buffer guarantees first flush sends all pages
+            prev_buffer: [0xFF; 1024],
         }
     }
 
@@ -100,7 +101,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
 
     /// Send a command stream: [0x00, cmd0, cmd1, ...] in a single I2C transaction.
     async fn send_cmds(&mut self, cmds: &[u8]) -> Result<(), I2C::Error> {
-        // Max command length: init sequence is 20 bytes + 1 control = 21
+        debug_assert!(cmds.len() <= 23, "command stream exceeds 23-byte buffer");
         let mut buf = [0u8; 24];
         buf[0] = 0x00; // Co=0, D/C=0 -> command stream
         buf[1..1 + cmds.len()].copy_from_slice(cmds);
