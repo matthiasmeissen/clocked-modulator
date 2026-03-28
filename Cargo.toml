@@ -3,6 +3,12 @@ name = "clocked-modulator"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = true
+
 [dependencies]
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.5"
