@@ -63,9 +63,7 @@ async fn usb_task(
 
             let frame = USB_TX.wait().await;
 
-            for chunk in frame.chunks(MIDI_PACKET_SIZE) {
-                let _ = sender.write_packet(chunk).await;
-            }
+            let _ = sender.write_packet(&frame).await;
         }
     };
 
