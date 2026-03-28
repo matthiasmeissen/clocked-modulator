@@ -1,7 +1,7 @@
 use embassy_rp::Peri;
 use embassy_rp::peripherals::{PIN_0, PIN_1, PIN_2, PIN_3, PWM_SLICE0, PWM_SLICE1};
 use embassy_rp::pwm::{Config, Pwm};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Receiver;
 use micromath::F32Ext;
 
@@ -17,7 +17,7 @@ fn f32_to_duty(v: f32) -> u16 {
 async fn led_task(
     mut pwm0: Pwm<'static>,
     mut pwm1: Pwm<'static>,
-    rx: Receiver<'static, CriticalSectionRawMutex, [f32; NUM_MODULATORS], 2>,
+    rx: Receiver<'static, ThreadModeRawMutex, [f32; NUM_MODULATORS], 2>,
 ) {
     let mut cfg0 = Config::default();
     cfg0.top = PWM_TOP;
@@ -42,7 +42,7 @@ pub fn init(
     slice1: Peri<'static, PWM_SLICE1>,
     pin2: Peri<'static, PIN_2>,
     pin3: Peri<'static, PIN_3>,
-    rx: Receiver<'static, CriticalSectionRawMutex, [f32; NUM_MODULATORS], 2>,
+    rx: Receiver<'static, ThreadModeRawMutex, [f32; NUM_MODULATORS], 2>,
     spawner: &embassy_executor::Spawner,
 ) {
     let mut cfg = Config::default();

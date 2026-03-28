@@ -7,7 +7,7 @@ use embassy_executor::Executor;
 use embassy_rp::i2c;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{Stack, spawn_core1};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Ticker};
@@ -37,12 +37,14 @@ bind_interrupts!(struct I2cIrqs {
 pub static CURRENT_BPM: AtomicU16 = AtomicU16::new(120);
 pub static PLAYBACK_STATE: AtomicBool = AtomicBool::new(true); // true = playing
 
-// Channels for less time-critical communication
-static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 4> = Channel::new();
-static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
+// Core 0 only — no spinlock needed
+static CONFIG_CHANNEL: Channel<ThreadModeRawMutex, modulator::ModulatorConfig, 4> = Channel::new();
+static RESET_CHANNEL: Channel<ThreadModeRawMutex, bool, 2> = Channel::new();
+static INPUT_EVENTS: Channel<ThreadModeRawMutex, input::InputEvent, 4> = Channel::new();
+static LED_VALUES: Channel<ThreadModeRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
+
+// Cross-core or Signal — needs CriticalSection
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
-static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
 static USB_TX: Signal<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE]> = Signal::new();
 
 // Each core needs its own stack and executor
