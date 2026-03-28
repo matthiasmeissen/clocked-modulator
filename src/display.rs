@@ -19,6 +19,7 @@ type Driver = Sh1106<i2c::I2c<'static, I2C0, i2c::Async>>;
 
 const WAVESHAPES_BMP: &[u8] = include_bytes!("../assets/export/waveshapes_1bit.bmp");
 const ICONS_BMP: &[u8] = include_bytes!("../assets/export/icons_1bit.bmp");
+const TITLES_BMP: &[u8] = include_bytes!("../assets/export/page_titles_1bit.bmp");
 
 const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
@@ -68,7 +69,7 @@ impl Display {
     }
 
     fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
-        self.draw_element_text(get_slot_position(1), "MAIN", "");
+        self.draw_element_title(get_slot_position(1), "", 0);
 
         self.draw_element_bpm(get_slot_position(2), bpm);
         self.draw_element_wave_teaser(get_slot_position(3), "A", &config.slots[0]);
@@ -80,7 +81,7 @@ impl Display {
     }
 
     fn draw_screen_tapmode(&mut self, bpm: f32) {
-        self.draw_element_text(get_slot_position(1), "TAP", "");
+        self.draw_element_title(get_slot_position(1), "", 1);
 
         self.draw_element_bpm(get_slot_position(2), bpm);
         self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
@@ -92,7 +93,7 @@ impl Display {
     }
 
     fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
-        self.draw_element_text(get_slot_position(1), slot.label(), "WAVE");
+        self.draw_element_title(get_slot_position(1), slot.label(), 2);
 
         self.draw_element_wave(get_slot_position(2), "WAVE", draft.wave);
         self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
@@ -104,7 +105,7 @@ impl Display {
     }
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
-        self.draw_element_text(get_slot_position(1), slot.label(), "RNG");
+        self.draw_element_title(get_slot_position(1), slot.label(), 2);
 
         self.draw_element_range(get_slot_position(2), draft.min, draft.max);
         self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
@@ -271,6 +272,26 @@ impl Display {
             Point::new(point.x + 15, point.y + 23),
             CHARACTER_STYLE,
             centered,
+        )
+        .draw(&mut self.driver)
+        .ok();
+    }
+
+    fn draw_element_title(&mut self, point: Point, label: &'static str, index: usize) {
+        self.draw_sprite(
+            Point::new(point.x, point.y),
+            SpritesheetIndex::Index(index),
+            3,
+            30,
+            64,
+            TITLES_BMP,
+        );
+
+        Text::with_baseline(
+            label,
+            Point::new(point.x + 3, point.y + 2),
+            CHARACTER_STYLE,
+            Baseline::Top,
         )
         .draw(&mut self.driver)
         .ok();
