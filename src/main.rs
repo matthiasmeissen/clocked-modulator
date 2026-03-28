@@ -7,7 +7,7 @@ use embassy_executor::Executor;
 use embassy_rp::i2c;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{Stack, spawn_core1};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Ticker};
@@ -20,26 +20,36 @@ use {defmt_rtt as _, panic_probe as _};
 mod display;
 mod modulator;
 mod phasor;
+mod sh1106;
 mod tap_tempo;
 mod usb;
 mod input;
 mod led;
 mod nav;
 
+use embassy_rp::bind_interrupts;
+
+bind_interrupts!(struct I2cIrqs {
+    I2C0_IRQ => i2c::InterruptHandler<embassy_rp::peripherals::I2C0>;
+});
+
 // Atomic shared state - no channel contention
 pub static CURRENT_BPM: AtomicU16 = AtomicU16::new(120);
 pub static PLAYBACK_STATE: AtomicBool = AtomicBool::new(true); // true = playing
 
-// Channels for less time-critical communication
-static CONFIG_CHANNEL: Channel<CriticalSectionRawMutex, modulator::ModulatorConfig, 4> = Channel::new();
-static RESET_CHANNEL: Channel<CriticalSectionRawMutex, bool, 2> = Channel::new();
-static INPUT_EVENTS: Channel<CriticalSectionRawMutex, input::InputEvent, 4> = Channel::new();
+// Core 0 only — no spinlock needed
+static CONFIG_CHANNEL: Channel<ThreadModeRawMutex, modulator::ModulatorConfig, 4> = Channel::new();
+static RESET_CHANNEL: Channel<ThreadModeRawMutex, bool, 2> = Channel::new();
+static INPUT_EVENTS: Channel<ThreadModeRawMutex, input::InputEvent, 4> = Channel::new();
+static LED_VALUES: Channel<ThreadModeRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
+
+// Cross-core or Signal — needs CriticalSection
 static DISPLAY_UPDATE: Channel<CriticalSectionRawMutex, DisplayState, 2> = Channel::new();
-static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULATORS], 2> = Channel::new();
 static USB_TX: Signal<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE]> = Signal::new();
 
 // Each core needs its own stack and executor
-static mut CORE1_STACK: Stack<16384> = Stack::new();
+// 32KB: display task future holds two 1024-byte framebuffers (current + previous)
+static mut CORE1_STACK: Stack<32768> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
@@ -136,20 +146,20 @@ async fn modulator_task() {
 
 // Runs on Core 1 - handles display updates
 #[embassy_executor::task]
-async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Blocking>) {
-    let mut disp = display::Display::new(i2c);
-    
+async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c::Async>) {
+    let mut disp = display::Display::new(i2c).await;
+
     let mut state = DisplayState {
         bpm: 120,
         nav: nav::NavState::Overview,
         playback: PlaybackState::Playing,
         config: modulator::ModulatorConfig::default(),
     };
-    disp.draw_main(state.bpm as f32, &state.nav, &state.config);
-    
+    disp.draw_main(state.bpm as f32, &state.nav, &state.config).await;
+
     loop {
         state = DISPLAY_UPDATE.receive().await;
-        disp.draw_main(state.bpm as f32, &state.nav, &state.config);
+        disp.draw_main(state.bpm as f32, &state.nav, &state.config).await;
     }
 }
 
@@ -231,16 +241,20 @@ fn main() -> ! {
     let b5 = Input::new(p.PIN_11, Pull::Up);
     let b6 = Input::new(p.PIN_10, Pull::Up);
 
-    // Display I2C - moves to Core 1
-    let mut i2c_config = i2c::Config::default();
-    i2c_config.frequency = 400_000;
-    let i2c = i2c::I2c::new_blocking(p.I2C0, p.PIN_17, p.PIN_16, i2c_config);
+    // Display I2C peripherals - constructed on Core 1 so I2C0_IRQ binds to Core 1's NVIC
+    let i2c0 = p.I2C0;
+    let pin_scl = p.PIN_17;
+    let pin_sda = p.PIN_16;
 
-    // Core 1: display only — blocking I2C can't stall input or USB
+    // Core 1: display only — async I2C yields executor during transfers
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
+            let mut i2c_config = i2c::Config::default();
+            i2c_config.frequency = 400_000;
+            let i2c = i2c::I2c::new_async(i2c0, pin_scl, pin_sda, I2cIrqs, i2c_config);
+
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
                 spawner.spawn(display_task(i2c)).unwrap();

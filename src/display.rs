@@ -8,14 +8,14 @@ use embedded_graphics::{
     primitives::{CornerRadii, PrimitiveStyle, Rectangle, RoundedRectangle},
     text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
-use sh1106::{Builder, interface::I2cInterface, prelude::*};
+use crate::sh1106::Sh1106;
 use tinybmp::Bmp;
 
 use crate::modulator::{ModSlot, ModulatorConfig, Waveshape};
 use crate::nav::{NavState, SlotId};
 use crate::phasor::Multiplier;
 
-type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
+type Driver = Sh1106<i2c::I2c<'static, I2C0, i2c::Async>>;
 
 const WAVESHAPES_BMP: &[u8] = include_bytes!("../assets/export/waveshapes_1bit.bmp");
 const ICONS_BMP: &[u8] = include_bytes!("../assets/export/icons_1bit.bmp");
@@ -47,13 +47,15 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new(i2c: i2c::I2c<'static, I2C0, i2c::Blocking>) -> Self {
-        let mut driver: Driver = Builder::new().connect_i2c(i2c).into();
-        driver.init().expect("Display init failed");
+    pub async fn new(i2c: i2c::I2c<'static, I2C0, i2c::Async>) -> Self {
+        let mut driver = Sh1106::new(i2c, 0x3C);
+        driver.init().await.expect("Display init failed");
+        driver.clear();
+        driver.flush_all().await.expect("Display flush failed");
         Self { driver }
     }
 
-    pub fn draw_main(&mut self, bpm: f32, nav: &NavState, config: &ModulatorConfig) {
+    pub async fn draw_main(&mut self, bpm: f32, nav: &NavState, config: &ModulatorConfig) {
         self.driver.clear();
 
         match nav {
@@ -63,7 +65,7 @@ impl Display {
             NavState::ModEditRange { slot, draft } => self.draw_screen_modedit_range(draft, slot),
         }
 
-        self.driver.flush().ok();
+        self.driver.flush().await.ok();
     }
 
     fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
