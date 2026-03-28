@@ -1,22 +1,45 @@
 use embassy_rp::i2c;
 use embassy_rp::peripherals::I2C0;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_6X10},
+    image::Image,
+    mono_font::{MonoTextStyle, ascii::FONT_6X9},
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
-    text::{Baseline, Text, TextStyleBuilder},
+    primitives::{CornerRadii, PrimitiveStyle, Rectangle, RoundedRectangle},
+    text::{Alignment, Baseline, Text, TextStyleBuilder},
 };
 use sh1106::{Builder, interface::I2cInterface, prelude::*};
+use tinybmp::Bmp;
 
-use crate::{modulator::ModSlot, nav::SlotId};
-use crate::nav::NavState;
+use crate::modulator::{ModSlot, ModulatorConfig, Waveshape};
+use crate::nav::{NavState, SlotId};
+use crate::phasor::Multiplier;
 
 type Driver = GraphicsMode<I2cInterface<i2c::I2c<'static, I2C0, i2c::Blocking>>>;
 
-const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+const WAVESHAPES_BMP: &[u8] = include_bytes!("../assets/export/waveshapes_1bit.bmp");
+const ICONS_BMP: &[u8] = include_bytes!("../assets/export/icons_1bit.bmp");
+
+const CHARACTER_STYLE: MonoTextStyle<BinaryColor> = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
 const BORDER_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
 const FILL_STYLE: PrimitiveStyle<BinaryColor> = PrimitiveStyle::with_fill(BinaryColor::On);
+// TO DO: Add center text alignment as style
+
+pub enum SpritesheetIndex {
+    Normalized(f32),
+    Index(usize),
+}
+
+enum IconSprite {
+    arrow_up,
+    cross,
+    check,
+    range,
+    wave,
+    pause,
+    play,
+    tap,
+}
 
 pub struct Display {
     driver: Driver,
@@ -29,11 +52,11 @@ impl Display {
         Self { driver }
     }
 
-    pub fn draw_main(&mut self, bpm: f32, nav: &NavState) {
+    pub fn draw_main(&mut self, bpm: f32, nav: &NavState, config: &ModulatorConfig) {
         self.driver.clear();
 
         match nav {
-            NavState::Overview => self.draw_screen_overview(bpm),
+            NavState::Overview => self.draw_screen_overview(bpm, config),
             NavState::TapMode => self.draw_screen_tapmode(bpm),
             NavState::ModEditWave { draft, slot } => self.draw_screen_modedit_wave(draft, slot),
             NavState::ModEditRange { slot, draft } => self.draw_screen_modedit_range(draft, slot),
@@ -42,94 +65,134 @@ impl Display {
         self.driver.flush().ok();
     }
 
-    fn draw_screen_overview(&mut self, bpm: f32) {
-        self.draw_element_text(get_slot_position(1), "Main", false);
+    fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
+        self.draw_element_text(get_slot_position(1), "MAIN", "");
+
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_text(get_slot_position(3), "A", true);
-        self.draw_element_text(get_slot_position(4), "B", true);
-        self.draw_element_text(get_slot_position(6), "TEMP", true);
-        self.draw_element_text(get_slot_position(7), "C", true);
-        self.draw_element_text(get_slot_position(8), "D", true);
+        self.draw_element_wave_teaser(get_slot_position(3), "A", &config.slots[0]);
+        self.draw_element_wave_teaser(get_slot_position(4), "B", &config.slots[1]);
+
+        self.draw_element_outline_with_label(get_slot_position(6), "-");
+        self.draw_element_wave_teaser(get_slot_position(7), "C", &config.slots[2]);
+        self.draw_element_wave_teaser(get_slot_position(8), "D", &config.slots[3]);
     }
 
     fn draw_screen_tapmode(&mut self, bpm: f32) {
-        self.draw_element_text(get_slot_position(1), "Tap", false);
+        self.draw_element_text(get_slot_position(1), "TAP", "");
+
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Tap", true);
-        self.draw_element_text(get_slot_position(6), "REST", true);
-        self.draw_element_text(get_slot_position(7), "PAUS", true);
-        self.draw_element_text(get_slot_position(8), "PLAY", true);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "TAP", IconSprite::tap);
+
+        self.draw_element_icon(get_slot_position(6), "RES", IconSprite::cross);
+        self.draw_element_icon(get_slot_position(7), "PAUS", IconSprite::pause);
+        self.draw_element_icon(get_slot_position(8), "PLAY", IconSprite::play);
     }
 
     fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
-        self.draw_element_text(get_slot_position(1), slot.label(), false);
+        self.draw_element_text(get_slot_position(1), slot.label(), "WAVE");
 
-        self.draw_element_values(get_slot_position(2), "Wave", draft.wave.name());
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Res", true);
+        self.draw_element_wave(get_slot_position(2), "WAVE", draft.wave);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
 
-        self.draw_element_values(get_slot_position(6), "Mult", draft.mul.name());
-        self.draw_element_text(get_slot_position(7), "Ok", true);
-        self.draw_element_text(get_slot_position(8), "Rng", true);
+        self.draw_element_value(get_slot_position(6), "MULT", draft.mul.name());
+        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
+        self.draw_element_icon(get_slot_position(8), "RNG", IconSprite::range);
     }
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
-        self.draw_element_text(get_slot_position(1), slot.label(), false);
+        self.draw_element_text(get_slot_position(1), slot.label(), "RNG");
 
         self.draw_element_range(get_slot_position(2), draft.min, draft.max);
-        self.draw_element_text(get_slot_position(3), "Up", true);
-        self.draw_element_text(get_slot_position(4), "Res", true);
-        
-        self.draw_element_text(get_slot_position(7), "Ok", true);
-        self.draw_element_text(get_slot_position(8), "Wave", true);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
+
+        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
+        self.draw_element_icon(get_slot_position(8), "WAVE", IconSprite::wave);
     }
 
-    // TO DO: Convert into generic draw float element
     /// Draws a grid cell with bpm as text
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
         let buf = format_u16(bpm_int);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
-        Text::with_baseline(s, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver)
-            .ok();
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
 
-        self.draw_element_outline(point);
+        Text::with_text_style(
+            s,
+            Point::new(point.x + 14, point.y + 7),
+            CHARACTER_STYLE,
+            text_style,
+        )
+        .draw(&mut self.driver)
+        .ok();
+
+        self.draw_element_outline_with_label(point, "BPM");
     }
 
     /// Draws a grid cell with a text
-    fn draw_element_text(&mut self, point: Point, text: &'static str, border: bool) {
-        Text::with_baseline(text, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver).ok();
+    fn draw_element_text(&mut self, point: Point, text1: &'static str, text2: &'static str) {
+        Text::with_baseline(
+            text1,
+            Point::new(point.x + 3, point.y + 2),
+            CHARACTER_STYLE,
+            Baseline::Top,
+        )
+        .draw(&mut self.driver)
+        .ok();
 
-        if border {
-            self.draw_element_outline(point);
-        }
+        Text::with_baseline(
+            text2,
+            Point::new(point.x + 3, point.y + 11),
+            CHARACTER_STYLE,
+            Baseline::Top,
+        )
+        .draw(&mut self.driver)
+        .ok();
+    }
+
+    /// Draws a grid cell with wave
+    fn draw_element_wave(&mut self, point: Point, label: &'static str, wave: Waveshape) {
+        self.draw_waveshape(Point::new(point.x + 9, point.y + 8), wave);
+
+        self.draw_element_outline_with_label(point, label);
     }
 
     /// Draws a grid cell with text label and value
-    fn draw_element_values(&mut self, point: Point, label: &'static str, value: &'static str) {
-        Text::with_baseline(label, Point::new(point.x + 3, point.y + 2), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver).ok();
+    fn draw_element_value(&mut self, point: Point, label: &'static str, value: &'static str) {
+        let text_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
 
-        Text::with_baseline(value, Point::new(point.x + 3, point.y + 19), CHARACTER_STYLE, Baseline::Top)
-            .draw(&mut self.driver).ok();
+        Text::with_text_style(
+            value,
+            Point::new(point.x + 14, point.y + 7),
+            CHARACTER_STYLE,
+            text_style,
+        )
+        .draw(&mut self.driver)
+        .ok();
 
-        self.draw_element_outline(point);
+        self.draw_element_outline_with_label(point, label);
     }
 
     /// Draw two grid cells as column with range adjust
     fn draw_element_range(&mut self, point: Point, min: f32, max: f32) {
         let bar_x = point.x + 11;
         let bar_y = point.y + 3;
-        let bar_height: i32 = 56;
+        let bar_height: i32 = 49;
 
         // Bar outline (full range 0.0–1.0)
         Rectangle::new(Point::new(bar_x, bar_y), Size::new(8, bar_height as u32))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
 
         // Map values to pixel y (inverted: 1.0 = top, 0.0 = bottom)
         let max_y = bar_y + ((1.0 - max) * bar_height as f32) as i32;
@@ -139,33 +202,153 @@ impl Display {
         let fill_height = (min_y - max_y).max(0) as u32;
         Rectangle::new(Point::new(bar_x, max_y), Size::new(8, fill_height))
             .into_styled(FILL_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
 
         // Min indicator (left side)
-        Rectangle::new(Point::new(bar_x - 8, min_y - 1), Size::new(6, 3))
+        Rectangle::new(Point::new(bar_x - 8, min_y - 2), Size::new(6, 3))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
 
         // Max indicator (right side)
         Rectangle::new(Point::new(bar_x + 10, max_y - 1), Size::new(6, 3))
             .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+            .draw(&mut self.driver)
+            .ok();
 
-        self.draw_element_outline_column(point);
+        self.draw_element_outline_column_with_label(point, "REMP");
+    }
+
+    /// Wave teaser cell: outline with waveshape sprite, multiplier, and label
+    fn draw_element_wave_teaser(&mut self, point: Point, label: &'static str, slot: &ModSlot) {
+        self.draw_waveshape(Point::new(point.x + 9, point.y + 12), slot.wave);
+
+        let mul_style = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+
+        Text::with_text_style(
+            slot.mul.name(),
+            Point::new(point.x + 15, point.y + 2),
+            CHARACTER_STYLE,
+            mul_style,
+        )
+        .draw(&mut self.driver)
+        .ok();
+
+        self.draw_element_outline_with_label(point, label);
+    }
+
+    fn draw_element_icon(&mut self, point: Point, label: &'static str, icon: IconSprite) {
+        let index = icon as usize;
+        self.draw_sprite(
+            Point::new(point.x + 10, point.y + 6),
+            SpritesheetIndex::Index(index),
+            8,
+            11,
+            11,
+            ICONS_BMP,
+        );
+
+        self.draw_element_outline_with_label(point, label);
+    }
+
+    /// Cell with label centered below the outline
+    fn draw_element_outline_with_label(&mut self, point: Point, label: &'static str) {
+        self.draw_element_outline(point);
+
+        let centered = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+
+        Text::with_text_style(
+            label,
+            Point::new(point.x + 15, point.y + 23),
+            CHARACTER_STYLE,
+            centered,
+        )
+        .draw(&mut self.driver)
+        .ok();
     }
 
     /// Outline for one grid cell
     fn draw_element_outline(&mut self, point: Point) {
-        Rectangle::new(point, Size::new(30, 30))
-            .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+        RoundedRectangle::new(
+            Rectangle::new(point, Size::new(30, 23)),
+            CornerRadii::new(Size::new(4, 4)),
+        )
+        .into_styled(BORDER_STYLE)
+        .draw(&mut self.driver)
+        .ok();
+    }
+
+    fn draw_element_outline_column_with_label(&mut self, point: Point, label: &'static str) {
+        self.draw_element_outline_column(point);
+
+        let centered = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+
+        Text::with_text_style(
+            label,
+            Point::new(point.x + 15, point.y + 55),
+            CHARACTER_STYLE,
+            centered,
+        )
+        .draw(&mut self.driver)
+        .ok();
     }
 
     /// Outline for two grid cells spanning a column
     fn draw_element_outline_column(&mut self, point: Point) {
-        Rectangle::new(point, Size::new(30, 62))
-            .into_styled(BORDER_STYLE)
-            .draw(&mut self.driver).ok();
+        RoundedRectangle::new(
+            Rectangle::new(point, Size::new(30, 55)),
+            CornerRadii::new(Size::new(4, 4)),
+        )
+        .into_styled(BORDER_STYLE)
+        .draw(&mut self.driver)
+        .ok();
+    }
+
+    fn draw_waveshape(&mut self, position: Point, shape: Waveshape) {
+        let index = shape as usize;
+        self.draw_sprite(
+            position,
+            SpritesheetIndex::Index(index),
+            4,
+            13,
+            7,
+            WAVESHAPES_BMP,
+        );
+    }
+
+    fn draw_sprite(
+        &mut self,
+        position: Point,
+        val: SpritesheetIndex,
+        items: usize,
+        width: u32,
+        height: u32,
+        bytes: &'static [u8],
+    ) {
+        let index = match val {
+            SpritesheetIndex::Normalized(v) => {
+                let clamped = v.clamp(0.0, 1.0);
+                (clamped * (items - 1) as f32) as usize
+            }
+            SpritesheetIndex::Index(i) => i,
+        } % items;
+
+        let x_offset = index as i32 * width as i32;
+        let area = Rectangle::new(Point::new(x_offset, 0), Size::new(width, height));
+
+        let bmp = Bmp::<BinaryColor>::from_slice(bytes).unwrap();
+        let sprite = bmp.sub_image(&area);
+        Image::new(&sprite, position).draw(&mut self.driver).ok();
     }
 }
 
