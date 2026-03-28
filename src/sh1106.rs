@@ -9,7 +9,7 @@ pub struct Sh1106<I2C> {
     i2c: I2C,
     addr: u8,
     buffer: [u8; 1024],
-    dirty: u8,
+    prev_buffer: [u8; 1024],
 }
 
 impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
@@ -19,7 +19,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
             i2c,
             addr,
             buffer: [0u8; 1024],
-            dirty: 0,
+            prev_buffer: [0xFF; 1024], // Force first flush to send all pages
         }
     }
 
@@ -45,13 +45,12 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
         .await
     }
 
-    /// Clear framebuffer to all zeros. Marks all pages dirty.
+    /// Clear framebuffer to all zeros.
     pub fn clear(&mut self) {
         self.buffer = [0u8; 1024];
-        self.dirty = 0xFF;
     }
 
-    /// Set a single pixel. Marks containing page dirty.
+    /// Set a single pixel in the framebuffer.
     pub fn set_pixel(&mut self, x: u8, y: u8, on: bool) {
         if x >= 128 || y >= 64 {
             return;
@@ -64,41 +63,29 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
         } else {
             self.buffer[idx] &= !(1 << bit);
         }
-        self.dirty |= 1 << page;
     }
 
-    /// Get raw mutable access to framebuffer.
-    /// Caller must call mark_dirty() for affected pages.
-    pub fn buffer_mut(&mut self) -> &mut [u8; 1024] {
-        &mut self.buffer
-    }
-
-    /// Mark a page (0-7) as dirty.
-    pub fn mark_dirty(&mut self, page: u8) {
-        self.dirty |= 1 << (page & 7);
-    }
-
-    /// Mark all pages as dirty.
-    pub fn mark_all_dirty(&mut self) {
-        self.dirty = 0xFF;
-    }
-
-    /// Flush only dirty pages to display. Clears dirty flags.
+    /// Flush pages that differ from what was last sent to the display.
     pub async fn flush(&mut self) -> Result<(), I2C::Error> {
         for page in 0u8..8 {
-            if self.dirty & (1 << page) == 0 {
+            let start = (page as usize) << 7;
+            let end = start + 128;
+            if self.buffer[start..end] == self.prev_buffer[start..end] {
                 continue;
             }
             self.send_page(page).await?;
+            self.prev_buffer[start..end].copy_from_slice(&self.buffer[start..end]);
         }
-        self.dirty = 0;
         Ok(())
     }
 
-    /// Flush all 8 pages regardless of dirty flags.
+    /// Flush all 8 pages regardless of changes.
     pub async fn flush_all(&mut self) -> Result<(), I2C::Error> {
-        self.dirty = 0xFF;
-        self.flush().await
+        for page in 0u8..8 {
+            self.send_page(page).await?;
+        }
+        self.prev_buffer = self.buffer;
+        Ok(())
     }
 
     /// Set contrast (0x00-0xFF). Takes effect immediately.
@@ -121,17 +108,21 @@ impl<I2C: embedded_hal_async::i2c::I2c> Sh1106<I2C> {
     }
 
     /// Write one page of pixel data to the display.
+    /// Uses Co bit to combine address commands + data in a single I2C transaction,
+    /// avoiding a second START/STOP and the ~600µs async setup overhead.
     async fn send_page(&mut self, page: u8) -> Result<(), I2C::Error> {
-        // Address setup: set page, column start = 2 (offset for 128-pixel modules)
-        self.i2c
-            .write(self.addr, &[0x00, 0xB0 | page, 0x02, 0x10])
-            .await?;
-
-        // Data: 0x40 control byte + 128 bytes of pixel data
-        let mut buf = [0u8; 129];
-        buf[0] = 0x40; // Co=0, D/C=1 -> data stream
+        // Single transaction: 3 command bytes with Co=1, then data stream with Co=0
+        // [0x80][page_cmd] [0x80][col_lo] [0x80][col_hi] [0x40][128 data bytes]
+        let mut buf = [0u8; 135];
+        buf[0] = 0x80; // Co=1, D/C=0: command byte follows, more control bytes after
+        buf[1] = 0xB0 | page;
+        buf[2] = 0x80;
+        buf[3] = 0x02; // Column lower nibble = 2 (offset)
+        buf[4] = 0x80;
+        buf[5] = 0x10; // Column upper nibble = 0
+        buf[6] = 0x40; // Co=0, D/C=1: data stream until STOP
         let start = (page as usize) << 7;
-        buf[1..].copy_from_slice(&self.buffer[start..start + 128]);
+        buf[7..].copy_from_slice(&self.buffer[start..start + 128]);
         self.i2c.write(self.addr, &buf).await
     }
 }

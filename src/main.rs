@@ -46,7 +46,7 @@ static LED_VALUES: Channel<CriticalSectionRawMutex, [f32; modulator::NUM_MODULAT
 static USB_TX: Signal<CriticalSectionRawMutex, [u8; modulator::MIDI_FRAME_SIZE]> = Signal::new();
 
 // Each core needs its own stack and executor
-static mut CORE1_STACK: Stack<16384> = Stack::new();
+static mut CORE1_STACK: Stack<32768> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
