@@ -129,11 +129,13 @@ impl NavState {
             // MODEDIT RANGE PAGE
             // ------------------------
             (ModEditRange { slot, mut draft }, Enc1Rotate(delta)) => {
-                draft.min = (draft.min + delta as f32 * 0.05).clamp(0.0, 1.0);
+                draft.min = (draft.min + delta as f32 * 0.02).clamp(0.0, 1.0);
+                config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             }
             (ModEditRange { slot, mut draft }, Enc2Rotate(delta)) => {
-                draft.max = (draft.max + delta as f32 * 0.05).clamp(0.0, 1.0);
+                draft.max = (draft.max + delta as f32 * 0.02).clamp(0.0, 1.0);
+                config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             }
             // Encoder Button 1 Press does nothing

@@ -6,14 +6,16 @@ pub enum Waveshape {
     Tri,
     Squ,
     Saw,
+    Con,
 }
 
 impl Waveshape {
-    pub const ALL: [Waveshape; 4] = [
+    pub const ALL: [Waveshape; 5] = [
         Waveshape::Sin,
         Waveshape::Tri,
         Waveshape::Squ,
         Waveshape::Saw,
+        Waveshape::Con,
     ];
 
     // Those could be solved more elegantly 
@@ -23,16 +25,18 @@ impl Waveshape {
             Waveshape::Sin => Waveshape::Tri,
             Waveshape::Tri => Waveshape::Squ,
             Waveshape::Squ => Waveshape::Saw,
-            Waveshape::Saw => Waveshape::Sin,
+            Waveshape::Saw => Waveshape::Con,
+            Waveshape::Con => Waveshape::Sin,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Waveshape::Sin => Waveshape::Saw,
+            Waveshape::Sin => Waveshape::Con,
             Waveshape::Tri => Waveshape::Sin,
             Waveshape::Squ => Waveshape::Tri,
             Waveshape::Saw => Waveshape::Squ,
+            Waveshape::Con => Waveshape::Saw,
         }
     }
 
@@ -42,6 +46,7 @@ impl Waveshape {
             Waveshape::Tri => "TRI",
             Waveshape::Squ => "SQU",
             Waveshape::Saw => "SAW",
+            Waveshape::Con => "CON",
         }
     }
 
@@ -52,6 +57,7 @@ impl Waveshape {
             Waveshape::Tri => 1.0 - ((phase - 0.5).abs() * 2.0),
             Waveshape::Squ => if phase > 0.5 { 1.0 } else { 0.0 },
             Waveshape::Saw => phase,
+            Waveshape::Con => 1.0,
         }
     }
 }
