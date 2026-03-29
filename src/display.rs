@@ -112,7 +112,11 @@ impl Display {
         self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
         self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
 
-        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
+        if draft.smooth {
+            self.draw_element_value(get_slot_position(7), "SMO", "ON");
+        } else {
+            self.draw_element_value(get_slot_position(7), "SMO", "OFF");
+        }
         self.draw_element_icon(get_slot_position(8), "WAVE", IconSprite::wave);
     }
 

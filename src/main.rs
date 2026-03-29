@@ -82,6 +82,8 @@ async fn modulator_task() {
         midi_bytes: [0; MIDI_FRAME_SIZE],
         outputs: [0.0; NUM_MODULATORS],
     };
+    let mut smooth_state: [f32; NUM_MODULATORS] = [0.0; NUM_MODULATORS];
+    const SMOOTH_ALPHA: f32 = 0.15;
 
     let start = Instant::now();
     let mut pause_offset: f32 = 0.0;
@@ -144,7 +146,15 @@ async fn modulator_task() {
         tick_count += 1;
 
         if tick_count % USB_SEND_EVERY == 0 {
-            frame = engine.compute_midi_bytes(&phasor, &config);
+            let raw = engine.compute(&phasor, &config);
+            for i in 0..NUM_MODULATORS {
+                if config.slots[i].smooth {
+                    smooth_state[i] = SMOOTH_ALPHA * raw[i] + (1.0 - SMOOTH_ALPHA) * smooth_state[i];
+                } else {
+                    smooth_state[i] = raw[i];
+                }
+            }
+            frame = engine.pack_midi_bytes(&smooth_state);
             USB_TX.signal(frame.midi_bytes);
         }
 

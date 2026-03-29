@@ -146,9 +146,10 @@ impl NavState {
                 ModEditRange { slot, draft }
             },
             // Encoder Button 4 Press does nothing
-            (ModEditRange { slot, draft}, B5Press) => {
+            (ModEditRange { slot, mut draft }, B5Press) => {
+                draft.smooth = !draft.smooth;
                 config.slots[slot.index()] = draft;
-                self
+                ModEditRange { slot, draft }
             },
             (ModEditRange {slot, draft}, B6Press) => ModEditWave { slot, draft },
 
