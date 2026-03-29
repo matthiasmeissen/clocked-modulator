@@ -13,6 +13,7 @@ use tinybmp::Bmp;
 
 use crate::modulator::{ModSlot, ModulatorConfig, Waveshape};
 use crate::nav::{NavState, SlotId};
+use crate::phasor::GlobalSpeed;
 use crate::phasor::Multiplier;
 
 type Driver = Sh1106<i2c::I2c<'static, I2C0, i2c::Async>>;
@@ -55,11 +56,11 @@ impl Display {
         Self { driver }
     }
 
-    pub async fn draw_main(&mut self, bpm: f32, nav: &NavState, config: &ModulatorConfig) {
+    pub async fn draw_main(&mut self, bpm: f32, speed: GlobalSpeed, nav: &NavState, config: &ModulatorConfig) {
         self.driver.clear();
 
         match nav {
-            NavState::Overview => self.draw_screen_overview(bpm, config),
+            NavState::Overview => self.draw_screen_overview(bpm, speed, config),
             NavState::TapMode => self.draw_screen_tapmode(bpm),
             NavState::ModEditWave { draft, slot } => self.draw_screen_modedit_wave(draft, slot),
             NavState::ModEditRange { slot, draft } => self.draw_screen_modedit_range(draft, slot),
@@ -68,14 +69,14 @@ impl Display {
         self.driver.flush().await.ok();
     }
 
-    fn draw_screen_overview(&mut self, bpm: f32, config: &ModulatorConfig) {
+    fn draw_screen_overview(&mut self, bpm: f32, speed: GlobalSpeed, config: &ModulatorConfig) {
         self.draw_element_title(get_slot_position(1), "", 0);
 
         self.draw_element_bpm(get_slot_position(2), bpm);
         self.draw_element_wave_teaser(get_slot_position(3), "A", &config.slots[0]);
         self.draw_element_wave_teaser(get_slot_position(4), "B", &config.slots[1]);
 
-        self.draw_element_outline_with_label(get_slot_position(6), "-");
+        self.draw_element_value(get_slot_position(6), "MUL", speed.name());
         self.draw_element_wave_teaser(get_slot_position(7), "C", &config.slots[2]);
         self.draw_element_wave_teaser(get_slot_position(8), "D", &config.slots[3]);
     }

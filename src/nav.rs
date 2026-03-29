@@ -1,5 +1,6 @@
 use crate::input::InputEvent;
 use crate::modulator::{ModSlot, ModulatorConfig};
+use crate::phasor::GlobalSpeed;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SlotId {
@@ -48,6 +49,7 @@ impl NavState {
         self,
         event: InputEvent,
         bpm: &mut u16,
+        speed: &mut GlobalSpeed,
         config: &mut ModulatorConfig,
         playback: &mut PlaybackState,
         reset_bar: &mut bool,
@@ -62,11 +64,14 @@ impl NavState {
                 *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
                 Overview
             }
-            // Encoder 2 Rotate does nothing
+            (Overview, Enc2Rotate(delta)) => {
+                *speed = if delta > 0 { speed.next() } else { speed.prev() };
+                Overview
+            }
             (Overview, B1Press) => TapMode,
             (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: config.slots[SlotId::A.index()] },
             (Overview, B3Press) => ModEditWave { slot: SlotId::B, draft: config.slots[SlotId::B.index()] },
-            // Encoder Button 4 Press does nothing
+            (Overview, B4Press) => { *speed = GlobalSpeed::X1; Overview }
             (Overview, B5Press) => ModEditWave { slot: SlotId::C, draft: config.slots[SlotId::C.index()] },
             (Overview, B6Press) => ModEditWave { slot: SlotId::D, draft: config.slots[SlotId::D.index()] },
 
