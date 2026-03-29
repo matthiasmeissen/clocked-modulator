@@ -1,63 +1,75 @@
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Multiplier {
-    D4,     // 4 Beats, One Bar (To complete)
-    D2,     // 2 Beats (To complete)
-    X1,     // 1 Beat (To complete)
-    X2,     // 1/2 Beat (To complete)
+    D8,     // 8 bars
+    D4,     // 4 bars
+    D2,     // 2 bars
+    X1,     // 1 bar
+    X2,     // 1/2 bar (2 beats)
+    X4,     // 1/4 bar (1 beat)
 }
 
 impl Multiplier {
-    pub const ALL: [Multiplier; 4] = [
+    pub const ALL: [Multiplier; 6] = [
+        Multiplier::D8,
         Multiplier::D4,
         Multiplier::D2,
         Multiplier::X1,
         Multiplier::X2,
+        Multiplier::X4,
     ];
 
-    // Those could be solved more elegantly
-    // but this approach is readable and fast
     pub fn next(self) -> Self {
         match self {
+            Multiplier::D8 => Multiplier::D4,
             Multiplier::D4 => Multiplier::D2,
             Multiplier::D2 => Multiplier::X1,
             Multiplier::X1 => Multiplier::X2,
-            Multiplier::X2 => Multiplier::D4,
+            Multiplier::X2 => Multiplier::X4,
+            Multiplier::X4 => Multiplier::D8,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Multiplier::D4 => Multiplier::X2,
+            Multiplier::D8 => Multiplier::X4,
+            Multiplier::D4 => Multiplier::D8,
             Multiplier::D2 => Multiplier::D4,
             Multiplier::X1 => Multiplier::D2,
             Multiplier::X2 => Multiplier::X1,
+            Multiplier::X4 => Multiplier::X2,
         }
     }
 
     pub fn factor(self) -> f32 {
         match self {
-            Multiplier::D4 => 0.25,
-            Multiplier::D2 => 0.5,
-            Multiplier::X1 => 1.0,
-            Multiplier::X2 => 2.0,
+            Multiplier::D8 => 0.03125, // 1 cycle = 8 bars = 32 beats
+            Multiplier::D4 => 0.0625,  // 1 cycle = 4 bars = 16 beats
+            Multiplier::D2 => 0.125,   // 1 cycle = 2 bars = 8 beats
+            Multiplier::X1 => 0.25,    // 1 cycle = 1 bar  = 4 beats
+            Multiplier::X2 => 0.5,     // 1 cycle = 2 beats
+            Multiplier::X4 => 1.0,     // 1 cycle = 1 beat
         }
     }
 
     pub fn index(self) -> usize {
         match self {
-            Multiplier::D4 => 0,
-            Multiplier::D2 => 1,
-            Multiplier::X1 => 2,
-            Multiplier::X2 => 3,
+            Multiplier::D8 => 0,
+            Multiplier::D4 => 1,
+            Multiplier::D2 => 2,
+            Multiplier::X1 => 3,
+            Multiplier::X2 => 4,
+            Multiplier::X4 => 5,
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
+            Multiplier::D8 => "/8",
             Multiplier::D4 => "/4",
             Multiplier::D2 => "/2",
             Multiplier::X1 => "x1",
             Multiplier::X2 => "x2",
+            Multiplier::X4 => "x4",
         }
     }
 }
@@ -144,6 +156,11 @@ pub struct PhasorBank {
     beat_offset: f32,
 }
 
+/// Wrap point for beat_offset. Must equal the period (in beats) of the
+/// slowest multiplier so all variants complete full cycles before wrapping.
+/// D8 = 8 bars = 32 beats → 1/0.03125 = 32.
+const BEAT_WRAP: f32 = 32.0;
+
 impl PhasorBank {
     pub fn new(bpm: f32) -> Self {
         Self {
@@ -159,8 +176,8 @@ impl PhasorBank {
     fn carry_over(&mut self, elapsed_secs: f32) {
         let dt = elapsed_secs - self.origin_secs;
         self.beat_offset += dt * self.beats_per_sec;
-        if self.beat_offset >= 4.0 {
-            self.beat_offset -= 4.0;
+        if self.beat_offset >= BEAT_WRAP {
+            self.beat_offset -= BEAT_WRAP;
         }
         self.origin_secs = elapsed_secs;
     }
@@ -194,11 +211,11 @@ impl PhasorBank {
             self.phases[idx] = phase;
         }
 
-        // Re-anchor origin every bar to keep dt small
-        if dt > 4.0 / self.beats_per_sec {
+        // Re-anchor origin every BEAT_WRAP beats to keep dt small
+        if dt > BEAT_WRAP / self.beats_per_sec {
             self.beat_offset = base_beats;
-            if self.beat_offset >= 4.0 {
-                self.beat_offset -= 4.0;
+            if self.beat_offset >= BEAT_WRAP {
+                self.beat_offset -= BEAT_WRAP;
             }
             self.origin_secs = elapsed_secs;
         }

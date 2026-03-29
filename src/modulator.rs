@@ -53,7 +53,13 @@ impl Waveshape {
     //* Normalized values between 0.0 and 1.0 */
     pub fn compute_from_phasor(self, phase: f32) -> f32 {
         match self {
-            Waveshape::Sin => SIN_LUT[(phase * 255.0) as usize],
+            Waveshape::Sin => {
+                let idx = phase * SIN_LUT.len() as f32;
+                let idx0 = idx as usize % SIN_LUT.len();
+                let idx1 = (idx0 + 1) % SIN_LUT.len();
+                let frac = idx - (idx as usize) as f32;
+                SIN_LUT[idx0] * (1.0 - frac) + SIN_LUT[idx1] * frac
+            }
             Waveshape::Tri => 1.0 - ((phase - 0.5).abs() * 2.0),
             Waveshape::Squ => if phase > 0.5 { 1.0 } else { 0.0 },
             Waveshape::Saw => phase,
@@ -105,9 +111,9 @@ impl Default for ModulatorConfig {
         Self {
             slots: [
                 ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.0, 1.0, false),
-                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.2, 0.8, false),
-                ModSlot::new(Multiplier::D2, Waveshape::Sin, 0.0, 1.0, false),
-                ModSlot::new(Multiplier::D4, Waveshape::Squ, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
             ]
         }
     }
