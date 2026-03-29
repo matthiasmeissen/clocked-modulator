@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::sync::atomic::{AtomicU16, AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU8, AtomicU16, AtomicBool, Ordering};
 use defmt::*;
 use embassy_executor::Executor;
 use embassy_rp::i2c;
@@ -35,6 +35,7 @@ bind_interrupts!(struct I2cIrqs {
 
 // Atomic shared state - no channel contention
 pub static CURRENT_BPM: AtomicU16 = AtomicU16::new(120);
+pub static CURRENT_SPEED: AtomicU8 = AtomicU8::new(2); // GlobalSpeed::X1
 pub static PLAYBACK_STATE: AtomicBool = AtomicBool::new(true); // true = playing
 
 // Core 0 only — no spinlock needed
@@ -56,6 +57,7 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 #[derive(Clone, Copy)]
 struct DisplayState {
     bpm: u16,
+    speed: phasor::GlobalSpeed,
     nav: nav::NavState,
     playback: PlaybackState,
     config: modulator::ModulatorConfig,
@@ -80,6 +82,8 @@ async fn modulator_task() {
         midi_bytes: [0; MIDI_FRAME_SIZE],
         outputs: [0.0; NUM_MODULATORS],
     };
+    let mut smooth_state: [f32; NUM_MODULATORS] = [0.0; NUM_MODULATORS];
+    const SMOOTH_ALPHA: f32 = 0.15;
 
     let start = Instant::now();
     let mut pause_offset: f32 = 0.0;
@@ -87,6 +91,7 @@ async fn modulator_task() {
 
     // Cache atomic values to minimize atomic operations
     let mut current_bpm = CURRENT_BPM.load(Ordering::Relaxed);
+    let mut current_speed = CURRENT_SPEED.load(Ordering::Relaxed);
     let mut playing = PLAYBACK_STATE.load(Ordering::Relaxed);
 
     loop {
@@ -115,6 +120,13 @@ async fn modulator_task() {
             phasor.set_bpm(current_bpm as f32, elapsed);
         }
 
+        let new_speed = CURRENT_SPEED.load(Ordering::Relaxed);
+        if new_speed != current_speed {
+            let elapsed = start.elapsed().as_micros() as f32 / 1_000_000.0 - pause_offset;
+            current_speed = new_speed;
+            phasor.set_speed(phasor::GlobalSpeed::from_u8(current_speed).factor(), elapsed);
+        }
+
         // Check for config updates (less frequent)
         if let Ok(new_config) = CONFIG_CHANNEL.try_receive() {
             config = new_config;
@@ -134,7 +146,15 @@ async fn modulator_task() {
         tick_count += 1;
 
         if tick_count % USB_SEND_EVERY == 0 {
-            frame = engine.compute_midi_bytes(&phasor, &config);
+            let raw = engine.compute(&phasor, &config);
+            for i in 0..NUM_MODULATORS {
+                if config.slots[i].smooth {
+                    smooth_state[i] = SMOOTH_ALPHA * raw[i] + (1.0 - SMOOTH_ALPHA) * smooth_state[i];
+                } else {
+                    smooth_state[i] = raw[i];
+                }
+            }
+            frame = engine.pack_midi_bytes(&smooth_state);
             USB_TX.signal(frame.midi_bytes);
         }
 
@@ -151,15 +171,16 @@ async fn display_task(i2c: i2c::I2c<'static, embassy_rp::peripherals::I2C0, i2c:
 
     let mut state = DisplayState {
         bpm: 120,
+        speed: phasor::GlobalSpeed::X1,
         nav: nav::NavState::Overview,
         playback: PlaybackState::Playing,
         config: modulator::ModulatorConfig::default(),
     };
-    disp.draw_main(state.bpm as f32, &state.nav, &state.config).await;
+    disp.draw_main(state.bpm as f32, state.speed, &state.nav, &state.config).await;
 
     loop {
         state = DISPLAY_UPDATE.receive().await;
-        disp.draw_main(state.bpm as f32, &state.nav, &state.config).await;
+        disp.draw_main(state.bpm as f32, state.speed, &state.nav, &state.config).await;
     }
 }
 
@@ -174,17 +195,19 @@ async fn input_task() {
     } else {
         PlaybackState::Paused
     };
+    let mut speed = phasor::GlobalSpeed::X1;
     let mut reset_bar = false;
     let mut tap_tempo = tap_tempo::TapTempo::new();
-    
+
     loop {
         let event = INPUT_EVENTS.receive().await;
-        
+
         let prev_bpm = bpm;
+        let prev_speed = speed;
         let prev_playback = playback;
         let prev_config = config;
 
-        nav = nav.handle(event, &mut bpm, &mut config, &mut playback, &mut reset_bar);
+        nav = nav.handle(event, &mut bpm, &mut speed, &mut config, &mut playback, &mut reset_bar);
 
         // Handle tap tempo specially
         if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
@@ -196,6 +219,9 @@ async fn input_task() {
         // Update atomic variables (very fast, no blocking)
         if bpm != prev_bpm {
             CURRENT_BPM.store(bpm, Ordering::Relaxed);
+        }
+        if speed != prev_speed {
+            CURRENT_SPEED.store(speed.to_u8(), Ordering::Relaxed);
         }
         if playback != prev_playback {
             PLAYBACK_STATE.store(
@@ -218,6 +244,7 @@ async fn input_task() {
         // Update display
         let _ = DISPLAY_UPDATE.try_send(DisplayState {
             bpm,
+            speed,
             nav,
             playback,
             config,

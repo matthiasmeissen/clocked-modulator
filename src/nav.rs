@@ -1,5 +1,6 @@
 use crate::input::InputEvent;
 use crate::modulator::{ModSlot, ModulatorConfig};
+use crate::phasor::GlobalSpeed;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SlotId {
@@ -48,6 +49,7 @@ impl NavState {
         self,
         event: InputEvent,
         bpm: &mut u16,
+        speed: &mut GlobalSpeed,
         config: &mut ModulatorConfig,
         playback: &mut PlaybackState,
         reset_bar: &mut bool,
@@ -62,11 +64,14 @@ impl NavState {
                 *bpm = (*bpm as i16 + delta as i16).clamp(20, 300) as u16;
                 Overview
             }
-            // Encoder 2 Rotate does nothing
+            (Overview, Enc2Rotate(delta)) => {
+                *speed = if delta > 0 { speed.next() } else { speed.prev() };
+                Overview
+            }
             (Overview, B1Press) => TapMode,
             (Overview, B2Press) => ModEditWave { slot: SlotId::A, draft: config.slots[SlotId::A.index()] },
             (Overview, B3Press) => ModEditWave { slot: SlotId::B, draft: config.slots[SlotId::B.index()] },
-            // Encoder Button 4 Press does nothing
+            (Overview, B4Press) => { *speed = GlobalSpeed::X1; Overview }
             (Overview, B5Press) => ModEditWave { slot: SlotId::C, draft: config.slots[SlotId::C.index()] },
             (Overview, B6Press) => ModEditWave { slot: SlotId::D, draft: config.slots[SlotId::D.index()] },
 
@@ -124,11 +129,13 @@ impl NavState {
             // MODEDIT RANGE PAGE
             // ------------------------
             (ModEditRange { slot, mut draft }, Enc1Rotate(delta)) => {
-                draft.min = (draft.min + delta as f32 * 0.05).clamp(0.0, 1.0);
+                draft.min = (draft.min + delta as f32 * 0.02).clamp(0.0, 1.0);
+                config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             }
             (ModEditRange { slot, mut draft }, Enc2Rotate(delta)) => {
-                draft.max = (draft.max + delta as f32 * 0.05).clamp(0.0, 1.0);
+                draft.max = (draft.max + delta as f32 * 0.02).clamp(0.0, 1.0);
+                config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             }
             // Encoder Button 1 Press does nothing
@@ -139,9 +146,10 @@ impl NavState {
                 ModEditRange { slot, draft }
             },
             // Encoder Button 4 Press does nothing
-            (ModEditRange { slot, draft}, B5Press) => {
+            (ModEditRange { slot, mut draft }, B5Press) => {
+                draft.smooth = !draft.smooth;
                 config.slots[slot.index()] = draft;
-                self
+                ModEditRange { slot, draft }
             },
             (ModEditRange {slot, draft}, B6Press) => ModEditWave { slot, draft },
 

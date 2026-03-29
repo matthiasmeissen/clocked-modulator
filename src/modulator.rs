@@ -6,14 +6,16 @@ pub enum Waveshape {
     Tri,
     Squ,
     Saw,
+    Con,
 }
 
 impl Waveshape {
-    pub const ALL: [Waveshape; 4] = [
+    pub const ALL: [Waveshape; 5] = [
         Waveshape::Sin,
         Waveshape::Tri,
         Waveshape::Squ,
         Waveshape::Saw,
+        Waveshape::Con,
     ];
 
     // Those could be solved more elegantly 
@@ -23,16 +25,18 @@ impl Waveshape {
             Waveshape::Sin => Waveshape::Tri,
             Waveshape::Tri => Waveshape::Squ,
             Waveshape::Squ => Waveshape::Saw,
-            Waveshape::Saw => Waveshape::Sin,
+            Waveshape::Saw => Waveshape::Con,
+            Waveshape::Con => Waveshape::Sin,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Waveshape::Sin => Waveshape::Saw,
+            Waveshape::Sin => Waveshape::Con,
             Waveshape::Tri => Waveshape::Sin,
             Waveshape::Squ => Waveshape::Tri,
             Waveshape::Saw => Waveshape::Squ,
+            Waveshape::Con => Waveshape::Saw,
         }
     }
 
@@ -42,16 +46,24 @@ impl Waveshape {
             Waveshape::Tri => "TRI",
             Waveshape::Squ => "SQU",
             Waveshape::Saw => "SAW",
+            Waveshape::Con => "CON",
         }
     }
 
     //* Normalized values between 0.0 and 1.0 */
     pub fn compute_from_phasor(self, phase: f32) -> f32 {
         match self {
-            Waveshape::Sin => SIN_LUT[(phase * 255.0) as usize],
+            Waveshape::Sin => {
+                let idx = phase * SIN_LUT.len() as f32;
+                let idx0 = idx as usize % SIN_LUT.len();
+                let idx1 = (idx0 + 1) % SIN_LUT.len();
+                let frac = idx - (idx as usize) as f32;
+                SIN_LUT[idx0] * (1.0 - frac) + SIN_LUT[idx1] * frac
+            }
             Waveshape::Tri => 1.0 - ((phase - 0.5).abs() * 2.0),
             Waveshape::Squ => if phase > 0.5 { 1.0 } else { 0.0 },
             Waveshape::Saw => phase,
+            Waveshape::Con => 1.0,
         }
     }
 }
@@ -62,11 +74,12 @@ pub struct ModSlot {
     pub wave: Waveshape,
     pub min: f32,
     pub max: f32,
+    pub smooth: bool,
 }
 
 impl ModSlot {
-    pub fn new(mul: Multiplier, wave: Waveshape, min: f32, max: f32) -> Self {
-        Self { mul, wave, min, max }
+    pub fn new(mul: Multiplier, wave: Waveshape, min: f32, max: f32, smooth: bool) -> Self {
+        Self { mul, wave, min, max, smooth }
     }
 
     pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
@@ -78,7 +91,7 @@ impl ModSlot {
 
 impl Default for ModSlot {
     fn default() -> Self {
-        Self { mul: Multiplier::X1, wave: Waveshape::Saw, min: 0.0, max: 1.0 }
+        Self { mul: Multiplier::X1, wave: Waveshape::Saw, min: 0.0, max: 1.0, smooth: false }
     }
 }
 
@@ -97,10 +110,10 @@ impl Default for ModulatorConfig {
     fn default() -> Self {
         Self {
             slots: [
-                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.0, 1.0),
-                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.2, 0.8),
-                ModSlot::new(Multiplier::D2, Waveshape::Sin, 0.0, 1.0),
-                ModSlot::new(Multiplier::D4, Waveshape::Squ, 0.0, 1.0),
+                ModSlot::new(Multiplier::X1, Waveshape::Saw, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
+                ModSlot::new(Multiplier::X1, Waveshape::Con, 0.0, 1.0, false),
             ]
         }
     }
@@ -124,10 +137,9 @@ impl ModulatorEngine {
         values
     }
 
-    /// Convert 4 outputs into 8 USB MIDI packets (14-bit CC: MSB + LSB per slot).
+    /// Pack pre-computed outputs into 8 USB MIDI packets (14-bit CC: MSB + LSB per slot).
     /// Each output (0.0–1.0) maps to 0–16383, split across CC N (MSB) and CC N+32 (LSB).
-    pub fn compute_midi_bytes(&self, phasor: &PhasorBank, config: &ModulatorConfig) -> ModulatorFrame {
-        let outputs = self.compute(phasor, config);
+    pub fn pack_midi_bytes(&self, outputs: &[f32; NUM_MODULATORS]) -> ModulatorFrame {
         let mut midi_bytes = [0u8; MIDI_FRAME_SIZE];
 
         for (i, &output) in outputs.iter().enumerate() {
@@ -150,7 +162,7 @@ impl ModulatorEngine {
             midi_bytes[base + 7] = lsb;
         }
 
-        ModulatorFrame { midi_bytes, outputs }
+        ModulatorFrame { midi_bytes, outputs: *outputs }
     }
 }
 
