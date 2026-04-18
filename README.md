@@ -2,6 +2,11 @@
 
 A clocked modulation source build on embedded hardware.
 
+## How to build
+
+Connect the pico 2 and the debug probe to your machine.
+Then use `cargo run --release` to build.
+
 ## Ressources
 
 - [Pico 2 Book](https://pico.implrust.com/index.html)
