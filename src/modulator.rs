@@ -76,7 +76,7 @@ impl Waveshape {
     }
 }
 
-// NOI defaults, used until per-slot editing exists. Override via `with_noise`.
+// NOI starting values for a fresh slot; edited per-slot on the ModEditNoise page.
 const DEFAULT_NOISE_SEED: u8 = 0;
 const DEFAULT_NOISE_FREQ: u8 = 3;
 
@@ -102,13 +102,6 @@ impl ModSlot {
             noise_seed: DEFAULT_NOISE_SEED,
             noise_freq: DEFAULT_NOISE_FREQ,
         }
-    }
-
-    /// Set the NOI waveshape parameters (no effect on the other waveshapes).
-    pub fn with_noise(mut self, seed: u8, freq: u8) -> Self {
-        self.noise_seed = seed;
-        self.noise_freq = freq;
-        self
     }
 
     pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
@@ -238,8 +231,9 @@ impl defmt::Format for Visualizer4 {
 // lattice index `mod freq` makes the value AND slope match at the phase 1->0
 // boundary — seamless, with no special casing.
 
-// Scales raw 1D noise (~[-0.5, 0.5]) toward [0, 1]; `clamp` guards the overshoot.
-const NOISE_NORM: f32 = 1.6;
+// 1D gradient noise is bounded to [-0.5, 0.5], so a gain of 1.0 maps it exactly
+// onto [0, 1] without ever clipping; the `clamp` is then only a float-rounding guard.
+const NOISE_NORM: f32 = 1.0;
 
 fn fade(t: f32) -> f32 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)

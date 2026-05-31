@@ -71,10 +71,10 @@ Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383)
 - `GlobalSpeed` (`phasor.rs`) — global rate scaler: Quarter · Half · X1 · Double · Quad (0.25× … 4.0×); `next()`/`prev()` clamp at the ends; round-trips through `to_u8`/`from_u8` for the atomic
 - `PhasorBank` (`phasor.rs`) — time-based, not an accumulator: holds `[f32; 6]` phases (one per `Multiplier`) and recomputes them from absolute elapsed seconds, so tick jitter has zero effect. Carries phase over on BPM/speed change via `beat_offset`; re-anchors every `BEAT_WRAP` (32) beats
 - `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0), Noi ("NOI" — 1D gradient Perlin noise, a pure function of phase so it repeats seamlessly each cycle; driven by the slot's `noise_seed`/`noise_freq`). All output [0.0, 1.0]
-- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` + `noise_seed`/`noise_freq` (NOI params; hardcoded defaults, set via the `with_noise()` builder) → one output channel
+- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` + `noise_seed`/`noise_freq` (NOI params, edited live on the ModEditNoise page) → one output channel
 - `ModulatorConfig` — `{ slots: [ModSlot; 4] }`, sent via `CONFIG_CHANNEL` when edited
 - `ModulatorEngine` — stateless; `compute()` produces 4 outputs, `pack_midi_bytes()` builds the 14-bit CC frame
-- `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot
+- `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft } | ModEditNoise { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot. The three edit pages cycle Wave → Range → NOI → Wave via B6
 - `SlotId` (`nav.rs`) — A | B | C | D, the four modulator slots
 - `PlaybackState` (`nav.rs`) — Playing | Paused
 - `TapTempo` (`tap_tempo.rs`) — ring buffer of tap intervals; averages once enough taps land within the timeout window
@@ -91,7 +91,7 @@ Done since the v2 spec was written:
 - Per-slot value smoothing (`smooth` flag, toggled with B5 on the Range page)
 
 Remaining work:
-- Unified `ModEdit { slot, page: EditPage, draft }` state (still split into ModEditWave/ModEditRange)
+- Unified `ModEdit { slot, page: EditPage, draft }` state (still split — now three: ModEditWave/ModEditRange/ModEditNoise)
 - Beat indicator on Overview (would need a beat-tick signal from the modulator)
 
 ## Embedded Rust Notes
