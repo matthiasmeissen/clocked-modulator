@@ -70,8 +70,8 @@ Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383)
 - `Multiplier` (`phasor.rs`) — cycle length: D8 (8 bars) · D4 (4 bars) · D2 (2 bars) · X1 (1 bar) · X2 (2 beats) · X4 (1 beat). 6 variants; `factor()` is cycles-per-beat (0.03125 … 1.0)
 - `GlobalSpeed` (`phasor.rs`) — global rate scaler: Quarter · Half · X1 · Double · Quad (0.25× … 4.0×); `next()`/`prev()` clamp at the ends; round-trips through `to_u8`/`from_u8` for the atomic
 - `PhasorBank` (`phasor.rs`) — time-based, not an accumulator: holds `[f32; 6]` phases (one per `Multiplier`) and recomputes them from absolute elapsed seconds, so tick jitter has zero effect. Carries phase over on BPM/speed change via `beat_offset`; re-anchors every `BEAT_WRAP` (32) beats
-- `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0). All output [0.0, 1.0]
-- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` → one output channel
+- `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0), Noi ("NOI" — 1D gradient Perlin noise, a pure function of phase so it repeats seamlessly each cycle; driven by the slot's `noise_seed`/`noise_freq`). All output [0.0, 1.0]
+- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` + `noise_seed`/`noise_freq` (NOI params; hardcoded defaults, set via the `with_noise()` builder) → one output channel
 - `ModulatorConfig` — `{ slots: [ModSlot; 4] }`, sent via `CONFIG_CHANNEL` when edited
 - `ModulatorEngine` — stateless; `compute()` produces 4 outputs, `pack_midi_bytes()` builds the 14-bit CC frame
 - `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot

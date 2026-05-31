@@ -347,7 +347,7 @@ impl Display {
         self.draw_sprite(
             position,
             SpritesheetIndex::Index(index),
-            5,
+            6,
             13,
             7,
             WAVESHAPES_BMP,

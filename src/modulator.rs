@@ -7,18 +7,20 @@ pub enum Waveshape {
     Squ,
     Saw,
     Con,
+    Noi,
 }
 
 impl Waveshape {
-    pub const ALL: [Waveshape; 5] = [
+    pub const ALL: [Waveshape; 6] = [
         Waveshape::Sin,
         Waveshape::Tri,
         Waveshape::Squ,
         Waveshape::Saw,
         Waveshape::Con,
+        Waveshape::Noi,
     ];
 
-    // Those could be solved more elegantly 
+    // Those could be solved more elegantly
     // but this approach is readable and fast
     pub fn next(self) -> Self {
         match self {
@@ -26,17 +28,19 @@ impl Waveshape {
             Waveshape::Tri => Waveshape::Squ,
             Waveshape::Squ => Waveshape::Saw,
             Waveshape::Saw => Waveshape::Con,
-            Waveshape::Con => Waveshape::Sin,
+            Waveshape::Con => Waveshape::Noi,
+            Waveshape::Noi => Waveshape::Sin,
         }
     }
 
     pub fn prev(self) -> Self {
         match self {
-            Waveshape::Sin => Waveshape::Con,
+            Waveshape::Sin => Waveshape::Noi,
             Waveshape::Tri => Waveshape::Sin,
             Waveshape::Squ => Waveshape::Tri,
             Waveshape::Saw => Waveshape::Squ,
             Waveshape::Con => Waveshape::Saw,
+            Waveshape::Noi => Waveshape::Con,
         }
     }
 
@@ -47,11 +51,14 @@ impl Waveshape {
             Waveshape::Squ => "SQU",
             Waveshape::Saw => "SAW",
             Waveshape::Con => "CON",
+            Waveshape::Noi => "NOI",
         }
     }
 
     //* Normalized values between 0.0 and 1.0 */
-    pub fn compute_from_phasor(self, phase: f32) -> f32 {
+    // The five deterministic shapes depend only on `phase`; `Noi` also needs the
+    // slot's per-slot noise params, so they ride along (ignored by the others).
+    pub fn compute_from_phasor(self, phase: f32, noise_seed: u8, noise_freq: u8) -> f32 {
         match self {
             Waveshape::Sin => {
                 let idx = phase * SIN_LUT.len() as f32;
@@ -64,9 +71,14 @@ impl Waveshape {
             Waveshape::Squ => if phase > 0.5 { 1.0 } else { 0.0 },
             Waveshape::Saw => phase,
             Waveshape::Con => 1.0,
+            Waveshape::Noi => perlin_cycle(phase, noise_seed, noise_freq),
         }
     }
 }
+
+// NOI defaults, used until per-slot editing exists. Override via `with_noise`.
+const DEFAULT_NOISE_SEED: u8 = 0;
+const DEFAULT_NOISE_FREQ: u8 = 3;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct ModSlot {
@@ -75,15 +87,33 @@ pub struct ModSlot {
     pub min: f32,
     pub max: f32,
     pub smooth: bool,
+    pub noise_seed: u8, // NOI: selects the random shape
+    pub noise_freq: u8, // NOI: humps per cycle (complexity); clamped to >= 1
 }
 
 impl ModSlot {
     pub fn new(mul: Multiplier, wave: Waveshape, min: f32, max: f32, smooth: bool) -> Self {
-        Self { mul, wave, min, max, smooth }
+        Self {
+            mul,
+            wave,
+            min,
+            max,
+            smooth,
+            noise_seed: DEFAULT_NOISE_SEED,
+            noise_freq: DEFAULT_NOISE_FREQ,
+        }
+    }
+
+    /// Set the NOI waveshape parameters (no effect on the other waveshapes).
+    pub fn with_noise(mut self, seed: u8, freq: u8) -> Self {
+        self.noise_seed = seed;
+        self.noise_freq = freq;
+        self
     }
 
     pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
-        let raw_value = self.wave.compute_from_phasor(phases[self.mul.index()]);
+        let phase = phases[self.mul.index()];
+        let raw_value = self.wave.compute_from_phasor(phase, self.noise_seed, self.noise_freq);
         let mapped_value = self.min + raw_value * (self.max - self.min);
         mapped_value
     }
@@ -91,7 +121,15 @@ impl ModSlot {
 
 impl Default for ModSlot {
     fn default() -> Self {
-        Self { mul: Multiplier::X1, wave: Waveshape::Saw, min: 0.0, max: 1.0, smooth: false }
+        Self {
+            mul: Multiplier::X1,
+            wave: Waveshape::Saw,
+            min: 0.0,
+            max: 1.0,
+            smooth: false,
+            noise_seed: DEFAULT_NOISE_SEED,
+            noise_freq: DEFAULT_NOISE_FREQ,
+        }
     }
 }
 
@@ -192,7 +230,63 @@ impl defmt::Format for Visualizer4 {
     }
 }
 
+// 1D Perlin noise
+//
+// NOI is a pure function of the phasor phase, so it repeats each cycle like the
+// other waveshapes. Gradient noise passes through zero at every integer lattice
+// point, so laying `freq` lattice points across the cycle and wrapping the
+// lattice index `mod freq` makes the value AND slope match at the phase 1->0
+// boundary — seamless, with no special casing.
+
+// Scales raw 1D noise (~[-0.5, 0.5]) toward [0, 1]; `clamp` guards the overshoot.
+const NOISE_NORM: f32 = 1.6;
+
+fn fade(t: f32) -> f32 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + t * (b - a)
+}
+
+/// Scalar gradient in [-1.0, ~1.0] for a lattice point, picked from the table.
+fn grad(i: usize) -> f32 {
+    PERM[i & 255] as f32 / 127.5 - 1.0
+}
+
+/// 1D Perlin over one cycle: `freq` humps, `seed` selects the shape.
+fn perlin_cycle(phase: f32, seed: u8, freq: u8) -> f32 {
+    let n = freq.max(1) as usize;
+    let x = phase * n as f32; // phase in [0.0, 1.0) -> x in [0.0, n)
+    let i = x as usize; // floor, since x >= 0
+    let f = x - i as f32;
+
+    let s = seed as usize;
+    let g0 = grad(s + (i % n));
+    let g1 = grad(s + ((i + 1) % n)); // lattice wraps mod n -> seamless
+
+    let raw = lerp(g0 * f, g1 * (f - 1.0), fade(f));
+    (raw * NOISE_NORM + 0.5).clamp(0.0, 1.0)
+}
+
 // Wavetables
+
+/// Ken Perlin's classic permutation of 0..=255, used to derive noise gradients.
+static PERM: [u8; 256] = [
+    151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69,
+    142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219,
+    203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175,
+    74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230,
+    220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76,
+    132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173,
+    186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206,
+    59, 227, 47, 16, 58, 17, 182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163,
+    70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232,
+    178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162,
+    241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204,
+    176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141,
+    128, 195, 78, 66, 215, 61, 156, 180,
+];
 
 static SIN_LUT: [f32; 256] = [
     0.50000000, 0.51227061, 0.52453384, 0.53678228, 0.54900857, 0.56120534, 0.57336524, 0.58548094,
