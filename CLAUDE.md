@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A clocked modulation source for music/audio, running on a Raspberry Pi Pico 2 (RP2350, Cortex-M33). Generates four synchronized LFO outputs at different beat multipliers with configurable waveforms. Outputs are streamed over USB CDC serial to TouchDesigner.
+A clocked modulation source for music/audio, running on a Raspberry Pi Pico 2 (RP2350, Cortex-M33). Generates four synchronized LFO outputs at different beat multipliers with configurable waveforms. Outputs are streamed to the host as **14-bit USB MIDI CC** messages (consumed by TouchDesigner or any MIDI host) and mirrored to four PWM-driven LED indicators.
 
 This is a learning project. The goal is to practice software craftsmanship in embedded Rust.
 
@@ -19,68 +19,89 @@ This is a learning project. The goal is to practice software craftsmanship in em
 
 - Target: `thumbv8m.main-none-eabihf` (Cortex-M33, hard float)
 - Build: `cargo build`
-- Flash via debug probe: `cargo run` (uses `probe-rs run --chip RP235x --protocol swd`)
+- Flash via debug probe: `cargo run --release` (uses `probe-rs run --chip RP235x --protocol swd`)
 - Flash via bootsel: switch runner in `.cargo/config.toml` to `picotool`
 - Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `.cargo/config.toml`
 
 ## Architecture
 
-Dual-core embassy async architecture. Core 0 handles time-critical tasks. Core 1 isolates slow blocking I2C display writes.
+Dual-core embassy async architecture. Core 0 handles time-critical tasks. Core 1 isolates slow blocking I2C display writes. To avoid cross-core channel contention (which previously caused output lag), live playback values — BPM, speed, playback state — are shared as plain atomics rather than channels.
 
 ```
 Core 0 (embassy executor):
-  input.rs    → GPIO polling: 2 encoders + 6 buttons → InputEvent channel
-  nav.rs      → State machine: InputEvent → NavState transitions + side effects
-  main.rs     → input_task: fans out bpm/config/display updates via channels
-              → modulator_task: 1kHz ticker, advances phasor, computes outputs
-  usb.rs      → CDC-ACM serial: streams 18-byte packets to host at 125Hz
+  input.rs     → GPIO: 2 encoders + 6 buttons, one task each → InputEvent channel
+  nav.rs       → State machine: (NavState, InputEvent) → NavState + side effects
+  tap_tempo.rs → TapTempo: averages tap intervals → BPM
+  main.rs      → input_task: runs nav.handle(), updates atomics/channels/display
+               → modulator_task: 250Hz ticker, drives phasor, packs MIDI, feeds LEDs
+  usb.rs       → USB MIDI (MidiClass): sends a frame whenever USB_TX is signalled
+  led.rs       → 2 PWM slices (4 channels) → LED brightness, gamma 2.2
 
 Core 1 (separate embassy executor):
-  display.rs  → SH1106 OLED (128x64) rendering via blocking I2C
+  display.rs   → screen layout / rendering via embedded-graphics
+  sh1106.rs    → SH1106 OLED (128x64) driver, double-buffered async I2C
 ```
 
 ### Inter-task Communication
 
-All via `embassy_sync::Channel` (lock-free, critical-section-based):
+Live values use atomics (no channel contention); structured/edited data uses channels/signals.
 
-- `INPUT_EVENTS` — buttons/encoders → input_task (mpsc)
-- `BPM_CHANNEL` — input_task → modulator_task
-- `CONFIG_CHANNEL` — input_task → modulator_task (only sent on change)
-- `USB_TX` — modulator_task → USB writer (125Hz packets)
-- `DISPLAY_UPDATE` — input_task (Core 0) → display_task (Core 1, cross-core)
+Atomics (`main.rs`), read each tick by `modulator_task`:
+- `CURRENT_BPM: AtomicU16`, `CURRENT_SPEED: AtomicU8` (a `GlobalSpeed`), `PLAYBACK_STATE: AtomicBool`
+
+Channels / signals (`embassy_sync`):
+- `INPUT_EVENTS` — buttons/encoders → input_task (`ThreadModeRawMutex`)
+- `CONFIG_CHANNEL` — input_task → modulator_task (only sent when config changes)
+- `RESET_CHANNEL` — input_task → modulator_task (bar reset)
+- `LED_VALUES` — modulator_task → led_task (~62.5Hz)
+- `USB_TX` — `Signal`, modulator_task → USB writer (latest MIDI frame, 125Hz)
+- `DISPLAY_UPDATE` — input_task (Core 0) → display_task (Core 1, cross-core, `CriticalSectionRawMutex`)
 
 ### Data Flow Per Tick
 
-`Ticker` at 1kHz → `PhasorBank::tick()` advances 4 phase accumulators → `ModSlot::output()` applies waveshape + range mapping → 4 normalized f32 values → packed into 18-byte USB packet (0xAA 0xBB header + 4x f32 LE) every 8th tick.
+`Ticker` at 250Hz (`TICK_RATE`) → read atomics, apply BPM/speed/reset changes → `PhasorBank::update(elapsed)` recomputes all phases from absolute elapsed time → every 2nd tick (`USB_SEND_EVERY`, 125Hz): `ModulatorEngine::compute()` → optional per-slot EMA smoothing (`SMOOTH_ALPHA`) → `pack_midi_bytes()` builds the MIDI frame → `USB_TX.signal()`. Every 4th tick (`LED_SEND_EVERY`, ~62.5Hz) the raw outputs are pushed to `LED_VALUES`.
+
+### MIDI Output Format
+
+Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383) split across two CCs on channel 1: CC `i` carries the MSB, CC `i+32` the LSB. The frame is 8 USB-MIDI packets × 4 bytes = `MIDI_FRAME_SIZE` (32) bytes, each packet `0x0B 0xB0 <cc> <value>`.
 
 ## Key Types
 
-- `Multiplier` — Beat division: D4 (bar, 0.25x), D2 (half, 0.5x), X1 (beat, 1.0x), X2 (eighth, 2.0x)
-- `PhasorBank` — 4 phase accumulators `[f32; 4]`, ticked at 1kHz, phases wrap at 1.0
-- `Waveshape` — Sin (256-entry LUT), Tri, Squ, Saw. All output [0.0, 1.0]
-- `ModSlot` — Multiplier + Waveshape + min/max range → one output channel
-- `ModulatorConfig` — `[ModSlot; 4]`, sent via channel when edited
-- `ModulatorEngine` — Stateless; computes all 4 outputs from PhasorBank + ModulatorConfig
-- `NavState` — Overview | TapMode | ModEditWave | ModEditRange. `handle()` is a pure state machine
-- `InputEvent` — Enc1Rotate(i8) | Enc2Rotate(i8) | B1Press–B6Press
+- `Multiplier` (`phasor.rs`) — cycle length: D8 (8 bars) · D4 (4 bars) · D2 (2 bars) · X1 (1 bar) · X2 (2 beats) · X4 (1 beat). 6 variants; `factor()` is cycles-per-beat (0.03125 … 1.0)
+- `GlobalSpeed` (`phasor.rs`) — global rate scaler: Quarter · Half · X1 · Double · Quad (0.25× … 4.0×); `next()`/`prev()` clamp at the ends; round-trips through `to_u8`/`from_u8` for the atomic
+- `PhasorBank` (`phasor.rs`) — time-based, not an accumulator: holds `[f32; 6]` phases (one per `Multiplier`) and recomputes them from absolute elapsed seconds, so tick jitter has zero effect. Carries phase over on BPM/speed change via `beat_offset`; re-anchors every `BEAT_WRAP` (32) beats
+- `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0). All output [0.0, 1.0]
+- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` → one output channel
+- `ModulatorConfig` — `{ slots: [ModSlot; 4] }`, sent via `CONFIG_CHANNEL` when edited
+- `ModulatorEngine` — stateless; `compute()` produces 4 outputs, `pack_midi_bytes()` builds the 14-bit CC frame
+- `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot
+- `SlotId` (`nav.rs`) — A | B | C | D, the four modulator slots
+- `PlaybackState` (`nav.rs`) — Playing | Paused
+- `TapTempo` (`tap_tempo.rs`) — ring buffer of tap intervals; averages once enough taps land within the timeout window
+- `InputEvent` (`input.rs`) — Enc1Rotate(i8) | Enc2Rotate(i8) | B1Press–B6Press
 
 ## Roadmap (v2 UI)
 
-See `docs/modulator_state_ui_guide_v2.md` for the full spec. Key remaining work:
+See `docs/modulator_state_ui_guide_v2.md` for the full spec.
 
-- Unified `ModEdit { slot, page: EditPage, draft }` state (currently split into ModEditWave/ModEditRange)
-- ENC2 support in nav: cycle multiplier (Waves page), adjust min (Range page)
-- Tap tempo logic in input_task (B3Press interval timing)
-- Playback pause/resume (B5/B6 in TapMode)
-- Beat indicator on Overview (requires BEAT_TICK channel from modulator)
-- Bar reset via B4Press / Enc2Rotate in Overview
+Done since the v2 spec was written:
+- ENC2 in nav: cycles multiplier on the Wave page, adjusts max on the Range page; on Overview it cycles `GlobalSpeed`
+- Tap tempo (`tap_tempo.rs`, driven by B3Press in TapMode)
+- Playback pause/resume (B5/B6 in TapMode) and bar reset via `RESET_CHANNEL`
+- Per-slot value smoothing (`smooth` flag, toggled with B5 on the Range page)
+
+Remaining work:
+- Unified `ModEdit { slot, page: EditPage, draft }` state (still split into ModEditWave/ModEditRange)
+- Beat indicator on Overview (would need a beat-tick signal from the modulator)
 
 ## Embedded Rust Notes
 
 - `#![no_std]`, `#![no_main]` — bare metal, no standard library
 - Rust edition 2024 requires `#[unsafe(link_section = "...")]`
-- `IMAGE_DEF` boot block required for RP2350 Boot ROM
+- RP2350 boot block is provided by `embassy-rp`'s `rp235xa` + `binary-info` features (no hand-written `IMAGE_DEF`)
 - Debug logging via `defmt` + RTT; structs need `defmt::Format` (not `core::fmt::Debug`)
-- Sin waveshape uses a 256-entry LUT — avoids float math in hot paths
-- Embassy async runtime: use `Ticker`, `Timer`, `Channel` for timing and communication
-- Each core has its own `embassy_executor::Executor` initialized via `StaticCell`
+- Sin waveshape uses a 256-entry LUT with linear interpolation — avoids trig in hot paths
+- Float math off the hot path (LED gamma, etc.) uses `micromath::F32Ext`
+- Embassy async runtime: use `Ticker`, `Timer`, `Channel`/`Signal` for timing and communication; prefer atomics for high-rate shared scalars to avoid channel contention
+- The display task holds two 1024-byte framebuffers (current + previous for diffing), so Core 1 needs a 32KB stack
+- Each core has its own `embassy_executor::Executor` initialized via `StaticCell`. The I2C peripheral is constructed inside the Core 1 closure so `I2C0_IRQ` binds to Core 1's NVIC
