@@ -7,6 +7,10 @@ A clocked modulation source build on embedded hardware.
 Connect the pico 2 and the debug probe to your machine.
 Then use `cargo run --release` to build.
 
+## How to connect debug
+Using female pin cable, orient usb to left.
+Pins on the right, colors top to bottom: yellow(dta), black(gnd), orange(clk).
+
 ## Ressources
 
 - [Pico 2 Book](https://pico.implrust.com/index.html)
