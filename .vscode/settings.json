@@ -1,4 +1,5 @@
 {
+    "rust-analyzer.linkedProjects": ["firmware/Cargo.toml"],
     "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
     "rust-analyzer.check.allTargets": false
 }

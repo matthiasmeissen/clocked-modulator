@@ -1,21 +1,43 @@
 # Clocked Modulator
 
-A clocked modulation source build on embedded hardware.
+<!-- TODO: one photo of the finished device, e.g. ![Clocked Modulator](docs/img/hero.jpg) -->
 
-## How to build
+A small USB box that generates four tempo-synced LFOs. Each output has its own
+waveform, cycle length and range, and all four follow one shared clock that you
+set by encoder or tap tempo. The values are sent to the computer as 14-bit USB
+MIDI CC, so TouchDesigner or any other MIDI host can use them without a driver.
+It runs on a Raspberry Pi Pico 2 and the firmware is written in Rust with Embassy.
 
-Connect the pico 2 and the debug probe to your machine.
-Then use `cargo run --release` to build.
+**[Manual and build guide](https://matthiasmeissen.github.io/clocked-modulator/)**
 
-## How to connect debug
-Using female pin cable, orient usb to left.
-Pins on the right, colors top to bottom: yellow(dta), black(gnd), orange(clk).
+## What is in this repo
 
-## Ressources
+| Folder | Contents |
+| --- | --- |
+| [firmware/](firmware/) | Rust firmware (Cargo project) |
+| [hardware/](hardware/) | PCB source files and fabrication outputs |
+| [enclosure/](enclosure/) | Printable and editable enclosure files |
+| [docs/](docs/) | The manual (also the website) and design notes |
 
-- [Pico 2 Book](https://pico.implrust.com/index.html)
-- [rp-235x template](https://github.com/rp-rs/rp235x-project-template/tree/main)
-- [pico 2 template](https://github.com/ImplFerris/pico2-template/tree/main)
-- [rp235x hal examples](https://github.com/rp-rs/rp-hal/tree/main/rp235x-hal-examples)
-- [embassy rp235x examples](https://github.com/embassy-rs/embassy/tree/main/examples/rp235x)
-- [Pico 2 Pinout](https://www.raspberrypi.com/documentation/microcontrollers/images/pico-2-r4-pinout.svg)
+## Install the firmware
+
+Without Rust: download `clocked-modulator.uf2` from the
+[latest release](https://github.com/matthiasmeissen/clocked-modulator/releases/latest),
+hold BOOTSEL while plugging in the Pico 2, and drag the file onto the `RP2350` drive.
+
+From source, with a debug probe connected:
+
+```sh
+cd firmware
+cargo run --release
+```
+
+The [manual](https://matthiasmeissen.github.io/clocked-modulator/) covers
+wiring, assembly and how to use the device.
+
+## License
+
+The firmware is released under the [MIT License](firmware/LICENSE).
+
+<!-- TODO: licence for hardware/, enclosure/ and docs/ is not chosen yet -->
+The hardware, enclosure and documentation files do not have a license yet.

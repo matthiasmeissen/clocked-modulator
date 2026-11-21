@@ -17,11 +17,13 @@ This is a learning project. The goal is to practice software craftsmanship in em
 
 ## Build and Run
 
+The Cargo project lives in `firmware/`. Run all cargo commands from there (Cargo reads `firmware/.cargo/config.toml` from the working directory). `hardware/` and `enclosure/` hold the PCB and case files; `docs/index.md` is the manual, served by GitHub Pages.
+
 - Target: `thumbv8m.main-none-eabihf` (Cortex-M33, hard float)
 - Build: `cargo build`
 - Flash via debug probe: `cargo run --release` (uses `probe-rs run --chip RP235x --protocol swd`)
-- Flash via bootsel: switch runner in `.cargo/config.toml` to `picotool`
-- Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `.cargo/config.toml`
+- Flash via bootsel: switch runner in `firmware/.cargo/config.toml` to `picotool`
+- Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `firmware/.cargo/config.toml`
 
 ## Dependency and Security Rules
 
