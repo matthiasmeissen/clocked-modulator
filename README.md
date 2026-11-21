@@ -1,23 +1,19 @@
 # Clocked Modulator
 
-<!-- TODO: one photo of the finished device, e.g. ![Clocked Modulator](docs/img/hero.jpg) -->
+![Clocked Modulator](docs/img/clocked-modulator.webp)
 
-A small USB box that generates four tempo-synced LFOs. Each output has its own
-waveform, cycle length and range, and all four follow one shared clock that you
-set by encoder or tap tempo. The values are sent to the computer as 14-bit USB
-MIDI CC, so TouchDesigner or any other MIDI host can use them without a driver.
-It runs on a Raspberry Pi Pico 2 and the firmware is written in Rust with Embassy.
+four lfos, one clock.  
+a small usb box for tempo-synced modulation. each output has its own waveform, cycle length and range. set the tempo by encoder or tap. sends 14-bit midi cc to touchdesigner or any midi host, no driver needed.  
+built on raspberry pi pico 2. written in rust.
 
 **[Manual and build guide](https://matthiasmeissen.github.io/clocked-modulator/)**
 
 ## What is in this repo
 
-| Folder | Contents |
-| --- | --- |
-| [firmware/](firmware/) | Rust firmware (Cargo project) |
-| [hardware/](hardware/) | PCB source files and fabrication outputs |
-| [enclosure/](enclosure/) | Printable and editable enclosure files |
-| [docs/](docs/) | The manual (also the website) and design notes |
+- [Firmware](firmware/) Rust firmware (Cargo project)
+- [Hardware](hardware/) PCB source files and fabrication outputs
+- [Enclosure](enclosure/) Printable and editable enclosure files
+- [Docs](docs/) The manual (also the website) and design notes
 
 ## Install the firmware
 
