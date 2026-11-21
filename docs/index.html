@@ -82,8 +82,8 @@
 
   .content > :first-child { margin-top: 0; }
   .content > :last-child { margin-bottom: 0; }
-  .content p, .content ul { max-width: 640px; margin: 0 0 24px; }
-  .content ul { padding-left: 20px; }
+  .content p, .content ul, .content ol { max-width: 640px; margin: 0 0 24px; }
+  .content ul, .content ol { padding-left: 20px; }
   .content li { margin-bottom: 8px; }
   .content img { margin: 40px 0; }
   h3 { margin: 64px 0 8px; font-weight: 500; }
@@ -253,15 +253,19 @@
     <p>The <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf" target="_blank" rel="noopener">schematic</a> shows how everything connects.</p>
 
     <h3>Assembly</h3>
-    <!-- TODO: assembly order, and the sizes of the inserts, spacers and screws -->
-    <ul>
-      <li>Check the pin order of the display before soldering. It must be
-      VCC-GND-SCL-SDA; modules with VCC and GND swapped exist and will not work.</li>
-      <li>Install the firmware before closing the case. The BOOTSEL button cannot be
-      reached once the Pico is inside.</li>
-      <li>The case takes threaded inserts. The cover rests on 1 cm spacers and is
-      screwed into the inserts.</li>
-    </ul>
+    <!-- TODO: confirm the screw and insert size (probably M2.5) and add it here and to the BOM -->
+    <ol>
+      <li>Check the pin order of the display. It must be VCC-GND-SCL-SDA; modules
+      with VCC and GND swapped exist and will not work.</li>
+      <li>Solder the parts onto the PCB, then fit the keycaps and encoder knobs.
+      The Pico 2 is soldered directly to the PCB, without a socket, to keep the enclosure low.</li>
+      <li>Install the firmware (see below) and test the device. The BOOTSEL button
+      cannot be reached once the Pico is inside the case.</li>
+      <li>Print the case and set the threaded inserts into its bottom holes. The
+      STEP files were made for CNC milling, so enlarge these holes to fit your inserts.</li>
+      <li>Place the PCB in the case and thread the 1 cm spacers into the inserts; they clamp the board.</li>
+      <li>Lay the cover on the spacers and screw it into them.</li>
+    </ol>
 
     <h3>Firmware</h3>
     <p>Download <code>clocked-modulator.uf2</code> from the
@@ -272,7 +276,6 @@
     <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/firmware" target="_blank" rel="noopener">firmware folder</a>.</p>
 
     <h3>First power-on</h3>
-    <!-- TODO: confirm the below against a freshly flashed device and add a photo -->
     <p>The display shows the Overview page at 120 BPM, the LED for slot A fades up
     once per bar, and the LEDs for slots B, C and D are fully lit. The computer
     lists a MIDI device named "Clocked Modulator".</p>

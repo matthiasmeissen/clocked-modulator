@@ -18,7 +18,5 @@ built on raspberry pi pico 2. written in rust.
 
 ## License
 
-The firmware is released under the [MIT License](firmware/LICENSE).
-
-<!-- TODO: licence for hardware/, enclosure/ and docs/ is not chosen yet -->
-The hardware, enclosure and documentation files do not have a license yet.
+Everything in this repo is licensed under [CC BY-NC-SA 4.0](LICENSE): build and
+modify it for yourself, give credit, share changes under the same terms. Commercial use is not allowed.
