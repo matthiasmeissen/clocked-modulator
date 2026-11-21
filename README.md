@@ -15,21 +15,8 @@ built on raspberry pi pico 2. written in rust.
 - [Enclosure](enclosure/) Printable and editable enclosure files
 - [Docs](docs/) The manual (also the website) and design notes
 
-## Install the firmware
-
-Without Rust: download `clocked-modulator.uf2` from the
-[latest release](https://github.com/matthiasmeissen/clocked-modulator/releases/latest),
-hold BOOTSEL while plugging in the Pico 2, and drag the file onto the `RP2350` drive.
-
-From source, with a debug probe connected:
-
-```sh
-cd firmware
-cargo run --release
-```
-
-The [manual](https://matthiasmeissen.github.io/clocked-modulator/) covers
-wiring, assembly and how to use the device.
+<!-- TODO: move the design notes (docs/modulator_state_ui_guide.md, docs/sh1106_driver_spec.md) into a specs/ folder -->
+<!-- TODO: decide what to do with .claude/ -->
 
 ## License
 

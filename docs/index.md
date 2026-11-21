@@ -18,6 +18,7 @@ The device has a display, two encoders (ENC1, ENC2), six buttons (B1 to B6) and
 four LEDs that show the four outputs, called slots A, B, C and D. B1 and B4 are
 the push switches of ENC1 and ENC2; the other four are the keys.
 
+<!-- TODO: diagram is outdated (no Noise page, old Overview actions); redraw -->
 ![Interface overview](clocked_modulator_interface.svg)
 
 ### Overview
@@ -98,45 +99,28 @@ full resolution, combine the pair as `(MSB * 128 + LSB) / 16383`.
 
 ### Parts
 
-- Raspberry Pi Pico 2 with headers
-- SH1106 OLED display module, 1.3", 128x64, I2C, with the pin order VCC-GND-SCL-SDA
-- 2 rotary encoders with push switch
-- 4 MX-compatible key switches with keycaps
-- 4 red 5 mm LEDs with 220 Ohm resistors
+- Bought parts: everything is in the [BOM](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv), with suppliers and links
 - The PCB: order it with the [Gerber files](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/gerbers.zip)
-- The printed case, cover and encoder knobs: [enclosure/](https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure)
+- Printed parts: the case, cover and encoder knobs in [enclosure/](https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure)
 
-Exact parts, suppliers and links are in the [BOM](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv),
-and the [schematic](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf) shows how they connect.
-
-### Pin assignment
-
-Buttons and encoders connect the pin to ground; the firmware enables the
-internal pull-ups.
-
-| Function | Pico 2 GPIO |
-| --- | --- |
-| LED A, B, C, D | 0, 1, 2, 3 |
-| B6 | 10 |
-| B5 | 11 |
-| ENC2 clock, data | 12, 13 |
-| ENC1 clock, data | 14, 15 |
-| Display SDA | 16 |
-| Display SCL | 17 |
-| B1 | 18 |
-| B4 | 19 |
-| B2 | 20 |
-| B3 | 21 |
+The [schematic](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf) shows how everything connects.
 
 ### Assembly
 
-<!-- TODO: assembly order and the gotchas you ran into -->
+<!-- TODO: assembly order, and the sizes of the inserts, spacers and screws -->
+
+- Check the pin order of the display before soldering. It must be
+  VCC-GND-SCL-SDA; modules with VCC and GND swapped exist and will not work.
+- Install the firmware before closing the case. The BOOTSEL button cannot be
+  reached once the Pico is inside.
+- The case takes threaded inserts. The cover rests on 1 cm spacers and is
+  screwed into the inserts.
 
 ### Firmware
 
 Download `clocked-modulator.uf2` from the
 [latest release](https://github.com/matthiasmeissen/clocked-modulator/releases/latest).
-Hold the BOOTSEL button on the Pico 2 while plugging it in, then drag the file
+Do this before closing the case. Hold the BOOTSEL button on the Pico 2 while plugging it in, then drag the file
 onto the `RP2350` drive that appears. The Pico restarts on its own.
 
 To build from source instead, see the

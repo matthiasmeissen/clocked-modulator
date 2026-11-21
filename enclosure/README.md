@@ -8,11 +8,7 @@ The other parts are listed in the [BOM](../hardware/fab/bom.csv).
 
 Import the STEP files into your slicer to print them, or into a CAD program to edit them.
 
-<!-- TODO: fill in the print settings -->
+The case takes threaded inserts. The cover rests on 1 cm spacers and is screwed
+into the inserts.
 
-| Setting | Value |
-| --- | --- |
-| Material | |
-| Layer height | |
-| Supports | |
-| Screws and inserts | |
+<!-- TODO: sizes and quantities of the inserts, spacers and screws, and add them to the BOM -->
