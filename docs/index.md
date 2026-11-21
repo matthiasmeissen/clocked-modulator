@@ -15,7 +15,8 @@ computer as MIDI. Source, PCB and enclosure files are on
 ## Using it
 
 The device has a display, two encoders (ENC1, ENC2), six buttons (B1 to B6) and
-four LEDs that show the four outputs, called slots A, B, C and D.
+four LEDs that show the four outputs, called slots A, B, C and D. B1 and B4 are
+the push switches of ENC1 and ENC2; the other four are the keys.
 
 ![Interface overview](clocked_modulator_interface.svg)
 
@@ -97,13 +98,16 @@ full resolution, combine the pair as `(MSB * 128 + LSB) / 16383`.
 
 ### Parts
 
-- Raspberry Pi Pico 2 (RP2350)
-- SH1106 OLED display, 128x64, I2C
-- 2 rotary encoders
-- 6 push buttons
-- 4 LEDs with series resistors
-- The PCB and its full parts list: [hardware/](https://github.com/matthiasmeissen/clocked-modulator/tree/main/hardware)
-- The enclosure: [enclosure/](https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure)
+- Raspberry Pi Pico 2 with headers
+- SH1106 OLED display module, 1.3", 128x64, I2C, with the pin order VCC-GND-SCL-SDA
+- 2 rotary encoders with push switch
+- 4 MX-compatible key switches with keycaps
+- 4 red 5 mm LEDs with 220 Ohm resistors
+- The PCB: order it with the [Gerber files](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/gerbers.zip)
+- The printed case, cover and encoder knobs: [enclosure/](https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure)
+
+Exact parts, suppliers and links are in the [BOM](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv),
+and the [schematic](https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf) shows how they connect.
 
 ### Pin assignment
 

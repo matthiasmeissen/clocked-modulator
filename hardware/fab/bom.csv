@@ -1,0 +1,9 @@
+No.,Qty,Ref,Part,Spec,Supplier,Link
+1,1,U1,Raspberry Pi Pico 2 with headers,"RP2350, pre-soldered headers, no wireless",BerryBase,https://www.berrybase.de/raspberry-pi-pico-2-rp2350-mikrocontroller-board-mit-headern
+2,1,U2,OLED display module,"1.3"", SH1106, 128x64, I2C, 4-pin, blue. Pin order must be VCC-GND-SCL-SDA",BerryBase,https://www.berrybase.de/1.3-128x64-oled-display-sh1106-iic-i2c-interface-einfarbig-blau
+3,2,"U3, U4",Bourns PEC11R-4220F-S0024,"Rotary encoder with push switch, 24 detents, 20 mm flatted 6 mm shaft",Mouser,https://www.mouser.com/ProductDetail/Bourns/PEC11R-4220F-S0024?qs=Zq5ylnUbLm6NGsQdib%2Ffbw%3D%3D
+4,4,U5-U8,Cherry MX switch,Any MX-compatible switch fits,Amazon,https://www.amazon.de/dp/B0F44BJJQN
+5,4,,Keycap,"MX stem, 1u",Amazon,https://www.amazon.de/dp/B0CKQN9SGW
+6,4,LED1-LED4,"LED, 5 mm, red","Through-hole, 2.54 mm pitch",Any,
+7,4,R1-R4,"Resistor, 220 Ohm","Axial through-hole, 1/4 W",Any,
+8,2,,Encoder knob,"3D printed, for 6 mm flatted shaft",See enclosure/,
