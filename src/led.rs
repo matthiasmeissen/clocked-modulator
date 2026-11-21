@@ -35,6 +35,8 @@ async fn led_task(
     }
 }
 
+// One argument per peripheral: grouping them would only move the list elsewhere.
+#[allow(clippy::too_many_arguments)]
 pub fn init(
     slice0: Peri<'static, PWM_SLICE0>,
     pin0: Peri<'static, PIN_0>,

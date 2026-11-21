@@ -23,6 +23,15 @@ This is a learning project. The goal is to practice software craftsmanship in em
 - Flash via bootsel: switch runner in `.cargo/config.toml` to `picotool`
 - Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `.cargo/config.toml`
 
+## Dependency and Security Rules
+
+- Building runs third-party code (`build.rs`, proc macros), so the checkpoint is adding a crate: before adding one, check its downloads, repository, maintainers and exact name, and ask me first
+- `Cargo.lock` stays committed; change it only on purpose with `cargo update -p <crate>`, never as a side effect
+- Run `cargo audit` after every dependency change and report the result
+- Install cargo tools with `cargo install <tool> --locked`, well-known tools only, and ask me first
+- Every `unsafe` block needs a `// SAFETY:` comment; check with `cargo clippy --release -- -D warnings -W clippy::undocumented_unsafe_blocks`
+- Known and accepted `cargo audit` warnings: `heapless` 0.8.0 (unsound, pulled in by embassy), `paste`, `proc-macro-error2`, `bare-metal` (unmaintained). Clearing them needs an embassy upgrade
+
 ## Architecture
 
 Dual-core embassy async architecture. Core 0 handles time-critical tasks. Core 1 isolates slow blocking I2C display writes. To avoid cross-core channel contention (which previously caused output lag), live playback values — BPM, speed, playback state — are shared as plain atomics rather than channels.

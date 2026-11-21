@@ -107,8 +107,7 @@ impl ModSlot {
     pub fn output(&self, phases: &[f32; Multiplier::ALL.len()]) -> f32 {
         let phase = phases[self.mul.index()];
         let raw_value = self.wave.compute_from_phasor(phase, self.noise_seed, self.noise_freq);
-        let mapped_value = self.min + raw_value * (self.max - self.min);
-        mapped_value
+        self.min + raw_value * (self.max - self.min)
     }
 }
 
@@ -203,7 +202,7 @@ pub struct Visualizer4(pub [f32; NUM_MODULATORS]);
 impl defmt::Format for Visualizer4 {
     fn format(&self, f: defmt::Formatter) {
         for (i, val) in self.0.iter().enumerate() {
-            let clamped = if *val < 0.0 { 0.0 } else if *val > 1.0 { 1.0 } else { *val };
+            let clamped = val.clamp(0.0, 1.0);
             let level = (clamped * 8.0) as usize;
             match level {
                 0 => defmt::write!(f, "{}: ", i),
@@ -282,6 +281,8 @@ static PERM: [u8; 256] = [
     128, 195, 78, 66, 215, 61, 156, 180,
 ];
 
+// The table is generated with 8 decimals; f32 rounds them, which is fine.
+#[allow(clippy::excessive_precision)]
 static SIN_LUT: [f32; 256] = [
     0.50000000, 0.51227061, 0.52453384, 0.53678228, 0.54900857, 0.56120534, 0.57336524, 0.58548094,
     0.59754516, 0.60955062, 0.62149009, 0.63335638, 0.64514234, 0.65684087, 0.66844493, 0.67994752,
