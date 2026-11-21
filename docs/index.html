@@ -24,13 +24,11 @@
     --border-secondary: #ababab;
     --radius-lg: 12px;
     --font-family-primary: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --gutter: 64px;
-    --rail: 296px;
     --mono: Menlo, ui-monospace, "SF Mono", Consolas, monospace;
+    --gutter: 64px;
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   body {
     margin: 0 auto;
     max-width: 1440px;
@@ -42,100 +40,87 @@
   a { color: inherit; text-underline-offset: 3px; }
   a:hover { color: var(--foreground-accent); }
   img { display: block; width: 100%; height: auto; }
-  code, th[scope="row"] { font: 13px/24px var(--mono); }
+  code, tbody th { font: 13px/24px var(--mono); }
 
-  /* Small tracked uppercase text: top bar, footer, table titles, column heads */
-  .label, h3, thead th {
+  /* Small tracked uppercase labels */
+  header, footer, .hero > p, h3, thead th {
     font: 400 12px/20px var(--font-family-primary);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
-  .bar {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px 32px;
-    min-height: 64px;
-    padding: 12px 0;
-  }
-  .bar a { text-decoration: none; }
-  .bar nav { display: flex; flex-wrap: wrap; gap: 8px 32px; }
-  header.bar { border-bottom: 1px solid var(--border-primary); }
-  header.bar strong { font-weight: 500; }
-  footer.bar { border-top: 1px solid var(--border-primary); color: var(--foreground-secondary); }
-  .mute { color: var(--foreground-secondary); }
+  /* Top bar and footer */
+  header, footer, nav { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 32px; }
+  header, footer { min-height: 64px; padding: 12px 0; }
+  header { border-bottom: 1px solid var(--border-primary); }
+  header strong { font-weight: 500; }
+  footer { border-top: 1px solid var(--border-primary); }
+  header a, footer a { text-decoration: none; }
+  footer, nav a:last-child, .hero > p, h3 + p, thead th { color: var(--foreground-secondary); }
 
-  /* Every block shares one grid: a narrow left rail and the content column */
-  .hero, main > section {
-    display: grid;
-    grid-template-columns: var(--rail) minmax(0, 1fr);
-    column-gap: var(--gutter);
-  }
+  /* Hero and sections share one grid: a narrow left rail and the content column */
+  .hero, section { display: grid; grid-template-columns: 296px minmax(0, 1fr); column-gap: var(--gutter); }
   .hero { align-items: end; padding: 96px 0 64px; }
-  .hero .label { margin: 0; color: var(--foreground-secondary); }
-  h1 {
-    margin: 0 0 32px;
-    font: 400 clamp(44px, 8vw, 72px)/1 var(--font-family-primary);
-    letter-spacing: -0.03em;
-  }
-  .lead { margin: 0; max-width: 560px; font-size: 20px; line-height: 30px; }
+  .hero p { margin: 0; }
+  h1 { margin: 0 0 32px; font: 400 clamp(44px, 8vw, 72px)/1 var(--font-family-primary); letter-spacing: -0.03em; }
+  h1 + p { max-width: 560px; font-size: 20px; line-height: 30px; }
+  body > img { border-radius: var(--radius-lg); }
 
-  main > section { padding: 96px 0; scroll-margin-top: 0; }
-  main > section + section { border-top: 1px solid var(--border-secondary); }
-  .num { display: block; margin-bottom: 8px; color: var(--foreground-accent); font: 12px/16px var(--mono); }
-  h2 {
-    margin: 0 0 32px;
-    font: 400 28px/32px var(--font-family-primary);
-    letter-spacing: -0.01em;
+  main { counter-reset: section; }
+  section { padding: 96px 0; counter-increment: section; }
+  section + section { border-top: 1px solid var(--border-secondary); }
+  h2 { margin: 0 0 32px; font: 400 28px/32px var(--font-family-primary); letter-spacing: -0.01em; }
+  /* The red 01, 02, 03 above each section title is counted by CSS, so sections can be reordered freely */
+  h2::before {
+    content: counter(section, decimal-leading-zero);
+    display: block;
+    margin-bottom: 8px;
+    color: var(--foreground-accent);
+    font: 12px/16px var(--mono);
+    letter-spacing: 0;
   }
+
   .content > :first-child { margin-top: 0; }
   .content > :last-child { margin-bottom: 0; }
   .content p, .content ul { max-width: 640px; margin: 0 0 24px; }
   .content ul { padding-left: 20px; }
   .content li { margin-bottom: 8px; }
-  .photo { border-radius: var(--radius-lg); }
-
-  .panel { display: block; width: 100%; height: auto; margin: 40px 0; }
-
+  .content img { margin: 40px 0; }
   h3 { margin: 64px 0 8px; font-weight: 500; }
-  h3 + p { color: var(--foreground-secondary); margin-bottom: 16px; }
+  h3 + p { margin-bottom: 16px; }
 
   table { width: 100%; margin: 16px 0 24px; border-collapse: collapse; border-top: 1px solid var(--border-primary); }
-  th, td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--border-secondary); text-align: left; vertical-align: top; }
-  th[scope="row"] { width: 160px; font-weight: 400; }
-  thead th { font-weight: 400; color: var(--foreground-secondary); }
+  th, td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--border-secondary); font-weight: 400; text-align: left; vertical-align: top; }
+  tbody th { width: 160px; }
   td { line-height: 24px; }
 
-  /* Control icons: outlined by default, a row's on-* classes fill the controls it talks about */
-  .pad-cell { width: 68px; padding-block: 12px; }
-  .pad { display: block; width: 44px; height: 28px; stroke: var(--border-primary); stroke-width: 1;
-         --e1: var(--background-primary); --e2: var(--background-primary); --b2: var(--background-primary);
-         --b3: var(--background-primary); --b5: var(--background-primary); --b6: var(--background-primary); }
-  .on-e1 { --e1: var(--foreground-primary); }
-  .on-e2 { --e2: var(--foreground-primary); }
-  .on-b2 { --b2: var(--foreground-primary); }
-  .on-b3 { --b3: var(--foreground-primary); }
-  .on-b5 { --b5: var(--foreground-primary); }
-  .on-b6 { --b6: var(--foreground-primary); }
+  /* Control icons. The icon is drawn once (#controls below) with every shape unfilled. A row class such as
+     "b3" sets that shape's fill variable, and the variable is inherited into the icon used in that row. */
+  td:has(svg) { width: 68px; padding-block: 12px; }
+  td svg { display: block; width: 44px; height: 28px; fill: var(--background-primary); stroke: var(--border-primary); }
+  .e1 { --e1: var(--foreground-primary); }
+  .e2 { --e2: var(--foreground-primary); }
+  .b2 { --b2: var(--foreground-primary); }
+  .b3 { --b3: var(--foreground-primary); }
+  .b5 { --b5: var(--foreground-primary); }
+  .b6 { --b6: var(--foreground-primary); }
 
   @media (max-width: 800px) {
     :root { --gutter: 20px; }
-    .hero, main > section { grid-template-columns: minmax(0, 1fr); }
+    nav a[href^="#"] { display: none; }  /* in-page links; the GitHub link stays */
+    .hero, section { grid-template-columns: minmax(0, 1fr); }
     .hero { padding: 56px 0 40px; }
-    .hero .label { order: 2; margin-top: 32px; }
-    main > section { padding: 56px 0; }
-    th[scope="row"] { width: 120px; }
+    .hero > p { order: 2; margin-top: 32px; }
+    section { padding: 56px 0; }
+    tbody th { width: 120px; }
   }
 </style>
 </head>
 <body>
 
-<!-- Control cluster icon (from the Paper icon artboards): two encoders on the left, four keys on the right.
-     Defined once; each table row reuses it and fills in its own controls through the on-* classes. -->
+<!-- Control icon: encoders ENC1/B1 (e1) and ENC2/B4 (e2) on the left, keys B2 B3 / B5 B6 on the right -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="pad" viewBox="0 0 66 42">
+  <symbol id="controls" viewBox="0 0 66 42">
     <circle style="fill:var(--e1)" cx="9" cy="9" r="8.5"/>
     <rect style="fill:var(--b2)" x="24.5" y="0.5" width="17" height="17" rx="1.5"/>
     <rect style="fill:var(--b3)" x="48.5" y="0.5" width="17" height="17" rx="1.5"/>
@@ -145,62 +130,59 @@
   </symbol>
 </svg>
 
-<header class="bar label">
+<header>
   <strong>Clocked Modulator</strong>
   <nav aria-label="Sections">
     <a href="#using-it">Using it</a>
     <a href="#midi-output">MIDI output</a>
     <a href="#building-one">Building one</a>
-    <a class="mute" href="https://github.com/matthiasmeissen/clocked-modulator">GitHub ↗</a>
+    <a href="https://github.com/matthiasmeissen/clocked-modulator" target="_blank" rel="noopener">GitHub ↗</a>
   </nav>
 </header>
 
 <div class="hero">
-  <p class="label">User guide<br>4 × LFO · USB MIDI</p>
+  <p>User guide<br>4 × LFO · USB MIDI</p>
   <div>
     <h1>clocked<br>modulator</h1>
-    <p class="lead">A small USB box that generates four tempo-synced LFOs and sends them to your
+    <p>A small USB box that generates four tempo-synced LFOs and sends them to your
     computer as MIDI. Source, PCB and enclosure files are on
-    <a href="https://github.com/matthiasmeissen/clocked-modulator">GitHub</a>.</p>
+    <a href="https://github.com/matthiasmeissen/clocked-modulator" target="_blank" rel="noopener">GitHub</a>.</p>
   </div>
 </div>
 
-<img class="photo" src="img/clocked-modulator.webp" width="2000" height="1113" alt="The Clocked Modulator: an aluminium box with a small display, four LEDs, two encoders and four keys">
+<img src="img/clocked-modulator.webp" width="2000" height="1113" alt="The Clocked Modulator: an aluminium box with a small display, four LEDs, two encoders and four keys">
 
 <!-- TODO: short demo clip -->
 
 <main>
 
 <section id="using-it">
-  <div>
-    <span class="num">01</span>
-    <h2>using it</h2>
-  </div>
+  <h2>using it</h2>
   <div class="content">
     <p>The device has a display, two encoders (ENC1, ENC2), six buttons (B1 to B6) and
     four LEDs that show the four outputs, called slots A, B, C and D. B1 and B4 are
     the push switches of ENC1 and ENC2; the other four are the keys.</p>
 
-    <img class="panel" src="img/panel.svg" width="1200" height="525" alt="Front panel: logo on the left, four LEDs above the display, encoders ENC1 (B1) and ENC2 (B4) in the middle, keys B2 and B3 above B5 and B6 on the right">
+    <img src="img/panel.svg" width="1200" height="525" alt="Front panel: logo on the left, four LEDs above the display, encoders ENC1 (B1) and ENC2 (B4) in the middle, keys B2 and B3 above B5 and B6 on the right">
 
     <h3>Overview</h3>
     <p>This is the page shown after power-on. The clock starts at 120 BPM.</p>
     <table>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Global speed: /4, /2, x1, x2, x4</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B1</th><td>Open the tempo page</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b2 on-b3 on-b5 on-b6" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B2, B3, B5, B6</th><td>Edit slot A, B, C, D</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B4</th><td>Set global speed back to x1</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC2</th><td>Global speed: /4, /2, x1, x2, x4</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B1</th><td>Open the tempo page</td></tr>
+      <tr class="b2 b3 b5 b6"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B2, B3, B5, B6</th><td>Edit slot A, B, C, D</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B4</th><td>Set global speed back to x1</td></tr>
     </table>
 
     <h3>Tempo page</h3>
     <table>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Tap tempo. Tap at least four times, less than two seconds apart</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B4</th><td>Set tempo back to 120 BPM</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Pause</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b6" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B6</th><td>Resume when paused, restart the bar when playing</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B2</th><td>Back to Overview</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
+      <tr class="b3"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B3</th><td>Tap tempo. Tap at least four times, less than two seconds apart</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B4</th><td>Set tempo back to 120 BPM</td></tr>
+      <tr class="b5"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B5</th><td>Pause</td></tr>
+      <tr class="b6"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B6</th><td>Resume when paused, restart the bar when playing</td></tr>
+      <tr class="b2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B2</th><td>Back to Overview</td></tr>
     </table>
 
     <h3>Editing a slot</h3>
@@ -209,26 +191,26 @@
 
     <h3>Wave</h3>
     <table>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Waveform: SIN, TRI, SQU, SAW, CON (constant), NOI (noise)</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Cycle length: /8, /4, /2 (8, 4, 2 bars), x1 (1 bar), x2 (2 beats), x4 (1 beat)</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set waveform and cycle length back to SAW and x1</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Apply. Changes on this page take effect only when you press B5</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC1</th><td>Waveform: SIN, TRI, SQU, SAW, CON (constant), NOI (noise)</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC2</th><td>Cycle length: /8, /4, /2 (8, 4, 2 bars), x1 (1 bar), x2 (2 beats), x4 (1 beat)</td></tr>
+      <tr class="b3"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B3</th><td>Set waveform and cycle length back to SAW and x1</td></tr>
+      <tr class="b5"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B5</th><td>Apply. Changes on this page take effect only when you press B5</td></tr>
     </table>
 
     <h3>Range</h3>
     <table>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Minimum output value</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Maximum output value</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set the range back to full</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Smoothing on or off</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC1</th><td>Minimum output value</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC2</th><td>Maximum output value</td></tr>
+      <tr class="b3"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B3</th><td>Set the range back to full</td></tr>
+      <tr class="b5"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B5</th><td>Smoothing on or off</td></tr>
     </table>
 
     <h3>Noise</h3>
     <p>Affects the NOI waveform only.</p>
     <table>
-      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Frequency, 1 to 16 humps per cycle</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Seed, which selects a different noise pattern</td></tr>
-      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set frequency and seed back to their defaults</td></tr>
+      <tr class="e1"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC1</th><td>Frequency, 1 to 16 humps per cycle</td></tr>
+      <tr class="e2"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">ENC2</th><td>Seed, which selects a different noise pattern</td></tr>
+      <tr class="b3"><td><svg aria-hidden="true"><use href="#controls"/></svg></td><th scope="row">B3</th><td>Set frequency and seed back to their defaults</td></tr>
     </table>
 
     <p>Changes on the Range and Noise pages take effect immediately. The noise pattern
@@ -238,10 +220,7 @@
 </section>
 
 <section id="midi-output">
-  <div>
-    <span class="num">02</span>
-    <h2>midi output</h2>
-  </div>
+  <h2>midi output</h2>
   <div class="content">
     <p>The device appears as a USB MIDI device named "Clocked Modulator". No driver is
     needed. Each slot is sent as a 14-bit control change on channel 1, about 125
@@ -263,18 +242,15 @@
 </section>
 
 <section id="building-one">
-  <div>
-    <span class="num">03</span>
-    <h2>building one</h2>
-  </div>
+  <h2>building one</h2>
   <div class="content">
     <h3>Parts</h3>
     <ul>
-      <li>Bought parts: everything is in the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv">BOM</a>, with suppliers and links</li>
-      <li>The PCB: order it with the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/gerbers.zip">Gerber files</a></li>
-      <li>Printed parts: the case, cover and encoder knobs in <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure">enclosure/</a></li>
+      <li>Bought parts: everything is in the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv" target="_blank" rel="noopener">BOM</a>, with suppliers and links</li>
+      <li>The PCB: order it with the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/gerbers.zip" target="_blank" rel="noopener">Gerber files</a></li>
+      <li>Printed parts: the case, cover and encoder knobs in <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure" target="_blank" rel="noopener">enclosure/</a></li>
     </ul>
-    <p>The <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf">schematic</a> shows how everything connects.</p>
+    <p>The <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf" target="_blank" rel="noopener">schematic</a> shows how everything connects.</p>
 
     <h3>Assembly</h3>
     <!-- TODO: assembly order, and the sizes of the inserts, spacers and screws -->
@@ -289,11 +265,11 @@
 
     <h3>Firmware</h3>
     <p>Download <code>clocked-modulator.uf2</code> from the
-    <a href="https://github.com/matthiasmeissen/clocked-modulator/releases/latest">latest release</a>.
+    <a href="https://github.com/matthiasmeissen/clocked-modulator/releases/latest" target="_blank" rel="noopener">latest release</a>.
     Do this before closing the case. Hold the BOOTSEL button on the Pico 2 while plugging it in, then drag the file
     onto the <code>RP2350</code> drive that appears. The Pico restarts on its own.</p>
     <p>To build from source instead, see the
-    <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/firmware">firmware folder</a>.</p>
+    <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/firmware" target="_blank" rel="noopener">firmware folder</a>.</p>
 
     <h3>First power-on</h3>
     <!-- TODO: confirm the below against a freshly flashed device and add a photo -->
@@ -305,9 +281,9 @@
 
 </main>
 
-<footer class="bar label">
+<footer>
   <span>Clocked Modulator</span>
-  <a href="https://github.com/matthiasmeissen/clocked-modulator">Source on GitHub ↗</a>
+  <a href="https://github.com/matthiasmeissen/clocked-modulator" target="_blank" rel="noopener">Source on GitHub ↗</a>
 </footer>
 
 </body>
