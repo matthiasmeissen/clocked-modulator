@@ -13,10 +13,8 @@ built on raspberry pi pico 2. written in rust.
 - [Firmware](firmware/) Rust firmware (Cargo project)
 - [Hardware](hardware/) PCB source files and fabrication outputs
 - [Enclosure](enclosure/) Printable and editable enclosure files
-- [Docs](docs/) The manual (also the website) and design notes
-
-<!-- TODO: move the design notes (docs/modulator_state_ui_guide.md, docs/sh1106_driver_spec.md) into a specs/ folder -->
-<!-- TODO: decide what to do with .claude/ -->
+- [Docs](docs/) The manual (also the website)
+- [Specs](specs/) Design notes for the UI and the display driver
 
 ## License
 

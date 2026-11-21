@@ -1,9 +1,5 @@
 # Clocked Modulator UI v2 — State Machine
 
-## Diagram
-
-![Interface Diagram](clocked_modulator_interface_v2.svg)
-
 ## Hardware Controls
 
 ```
