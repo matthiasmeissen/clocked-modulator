@@ -2,7 +2,6 @@
 #![no_main]
 
 use core::sync::atomic::{AtomicU8, AtomicU16, AtomicBool, Ordering};
-use defmt::*;
 use embassy_executor::Executor;
 use embassy_rp::i2c;
 use embassy_rp::gpio::{Input, Pull};
@@ -145,7 +144,7 @@ async fn modulator_task() {
 
         tick_count += 1;
 
-        if tick_count % USB_SEND_EVERY == 0 {
+        if tick_count.is_multiple_of(USB_SEND_EVERY) {
             let raw = engine.compute(&phasor, &config);
             for i in 0..NUM_MODULATORS {
                 if config.slots[i].smooth {
@@ -158,7 +157,7 @@ async fn modulator_task() {
             USB_TX.signal(frame.midi_bytes);
         }
 
-        if tick_count % LED_SEND_EVERY == 0 {
+        if tick_count.is_multiple_of(LED_SEND_EVERY) {
             let _ = LED_VALUES.try_send(frame.outputs);
         }
     }
@@ -210,10 +209,11 @@ async fn input_task() {
         nav = nav.handle(event, &mut bpm, &mut speed, &mut config, &mut playback, &mut reset_bar);
 
         // Handle tap tempo specially
-        if matches!(nav, nav::NavState::TapMode) && matches!(event, input::InputEvent::B3Press) {
-            if let Some(new_bpm) = tap_tempo.tap() {
-                bpm = new_bpm;
-            }
+        if matches!(nav, nav::NavState::TapMode)
+            && matches!(event, input::InputEvent::B3Press)
+            && let Some(new_bpm) = tap_tempo.tap()
+        {
+            bpm = new_bpm;
         }
 
         // Update atomic variables (very fast, no blocking)
@@ -276,6 +276,8 @@ fn main() -> ! {
     // Core 1: display only — async I2C yields executor during transfers
     spawn_core1(
         p.CORE1,
+        // SAFETY: this is the only reference ever taken to CORE1_STACK, and it is
+        // handed to Core 1 exactly once, here, before that core starts running.
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let mut i2c_config = i2c::Config::default();

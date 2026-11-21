@@ -23,6 +23,15 @@ This is a learning project. The goal is to practice software craftsmanship in em
 - Flash via bootsel: switch runner in `.cargo/config.toml` to `picotool`
 - Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `.cargo/config.toml`
 
+## Dependency and Security Rules
+
+- Building runs third-party code (`build.rs`, proc macros), so the checkpoint is adding a crate: before adding one, check its downloads, repository, maintainers and exact name, and ask me first
+- `Cargo.lock` stays committed; change it only on purpose with `cargo update -p <crate>`, never as a side effect
+- Run `cargo audit` after every dependency change and report the result
+- Install cargo tools with `cargo install <tool> --locked`, well-known tools only, and ask me first
+- Every `unsafe` block needs a `// SAFETY:` comment; check with `cargo clippy --release -- -D warnings -W clippy::undocumented_unsafe_blocks`
+- Known and accepted `cargo audit` warnings: `heapless` 0.8.0 (unsound, pulled in by embassy), `paste`, `proc-macro-error2`, `bare-metal` (unmaintained). Clearing them needs an embassy upgrade
+
 ## Architecture
 
 Dual-core embassy async architecture. Core 0 handles time-critical tasks. Core 1 isolates slow blocking I2C display writes. To avoid cross-core channel contention (which previously caused output lag), live playback values — BPM, speed, playback state — are shared as plain atomics rather than channels.
@@ -70,11 +79,11 @@ Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383)
 - `Multiplier` (`phasor.rs`) — cycle length: D8 (8 bars) · D4 (4 bars) · D2 (2 bars) · X1 (1 bar) · X2 (2 beats) · X4 (1 beat). 6 variants; `factor()` is cycles-per-beat (0.03125 … 1.0)
 - `GlobalSpeed` (`phasor.rs`) — global rate scaler: Quarter · Half · X1 · Double · Quad (0.25× … 4.0×); `next()`/`prev()` clamp at the ends; round-trips through `to_u8`/`from_u8` for the atomic
 - `PhasorBank` (`phasor.rs`) — time-based, not an accumulator: holds `[f32; 6]` phases (one per `Multiplier`) and recomputes them from absolute elapsed seconds, so tick jitter has zero effect. Carries phase over on BPM/speed change via `beat_offset`; re-anchors every `BEAT_WRAP` (32) beats
-- `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0). All output [0.0, 1.0]
-- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` → one output channel
+- `Waveshape` (`modulator.rs`) — Sin (256-entry LUT, linearly interpolated), Tri, Squ, Saw, Con (constant 1.0), Noi ("NOI" — 1D gradient Perlin noise, a pure function of phase so it repeats seamlessly each cycle; driven by the slot's `noise_seed`/`noise_freq`). All output [0.0, 1.0]
+- `ModSlot` (`modulator.rs`) — Multiplier + Waveshape + min/max range + `smooth: bool` + `noise_seed`/`noise_freq` (NOI params, edited live on the ModEditNoise page) → one output channel
 - `ModulatorConfig` — `{ slots: [ModSlot; 4] }`, sent via `CONFIG_CHANNEL` when edited
 - `ModulatorEngine` — stateless; `compute()` produces 4 outputs, `pack_midi_bytes()` builds the 14-bit CC frame
-- `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot
+- `NavState` (`nav.rs`) — Overview | TapMode | ModEditWave { slot, draft } | ModEditRange { slot, draft } | ModEditNoise { slot, draft }. `handle()` is a pure state machine matching on `(state, event)`; edits mutate a `draft` ModSlot. The three edit pages cycle Wave → Range → NOI → Wave via B6
 - `SlotId` (`nav.rs`) — A | B | C | D, the four modulator slots
 - `PlaybackState` (`nav.rs`) — Playing | Paused
 - `TapTempo` (`tap_tempo.rs`) — ring buffer of tap intervals; averages once enough taps land within the timeout window
@@ -91,7 +100,7 @@ Done since the v2 spec was written:
 - Per-slot value smoothing (`smooth` flag, toggled with B5 on the Range page)
 
 Remaining work:
-- Unified `ModEdit { slot, page: EditPage, draft }` state (still split into ModEditWave/ModEditRange)
+- Unified `ModEdit { slot, page: EditPage, draft }` state (still split — now three: ModEditWave/ModEditRange/ModEditNoise)
 - Beat indicator on Overview (would need a beat-tick signal from the modulator)
 
 ## Embedded Rust Notes

@@ -8,7 +8,6 @@ use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
 
 use crate::USB_TX;
-use crate::modulator::MIDI_PACKET_SIZE;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;

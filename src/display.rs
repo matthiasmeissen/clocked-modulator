@@ -14,7 +14,6 @@ use tinybmp::Bmp;
 use crate::modulator::{ModSlot, ModulatorConfig, Waveshape};
 use crate::nav::{NavState, SlotId};
 use crate::phasor::GlobalSpeed;
-use crate::phasor::Multiplier;
 
 type Driver = Sh1106<i2c::I2c<'static, I2C0, i2c::Async>>;
 
@@ -33,14 +32,15 @@ pub enum SpritesheetIndex {
 }
 
 enum IconSprite {
-    arrow_up,
-    cross,
-    check,
-    range,
-    wave,
-    pause,
-    play,
-    tap,
+    ArrowUp,
+    Cross,
+    Check,
+    Range,
+    Wave,
+    Pause,
+    Play,
+    Tap,
+    Noise,
 }
 
 pub struct Display {
@@ -64,6 +64,7 @@ impl Display {
             NavState::TapMode => self.draw_screen_tapmode(bpm),
             NavState::ModEditWave { draft, slot } => self.draw_screen_modedit_wave(draft, slot),
             NavState::ModEditRange { slot, draft } => self.draw_screen_modedit_range(draft, slot),
+            NavState::ModEditNoise { slot, draft } => self.draw_screen_modedit_noise(draft, slot),
         }
 
         self.driver.flush().await.ok();
@@ -85,45 +86,61 @@ impl Display {
         self.draw_element_title(get_slot_position(1), "", 1);
 
         self.draw_element_bpm(get_slot_position(2), bpm);
-        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
-        self.draw_element_icon(get_slot_position(4), "TAP", IconSprite::tap);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::ArrowUp);
+        self.draw_element_icon(get_slot_position(4), "TAP", IconSprite::Tap);
 
-        self.draw_element_icon(get_slot_position(6), "RES", IconSprite::cross);
-        self.draw_element_icon(get_slot_position(7), "PAUS", IconSprite::pause);
-        self.draw_element_icon(get_slot_position(8), "PLAY", IconSprite::play);
+        self.draw_element_icon(get_slot_position(6), "RES", IconSprite::Cross);
+        self.draw_element_icon(get_slot_position(7), "PAUS", IconSprite::Pause);
+        self.draw_element_icon(get_slot_position(8), "PLAY", IconSprite::Play);
     }
 
     fn draw_screen_modedit_wave(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_title(get_slot_position(1), slot.label(), 2);
 
         self.draw_element_wave(get_slot_position(2), "WAVE", draft.wave);
-        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
-        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::ArrowUp);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::Cross);
 
         self.draw_element_value(get_slot_position(6), "MULT", draft.mul.name());
-        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::check);
-        self.draw_element_icon(get_slot_position(8), "RNG", IconSprite::range);
+        self.draw_element_icon(get_slot_position(7), "OK", IconSprite::Check);
+        self.draw_element_icon(get_slot_position(8), "WAVE", IconSprite::Wave);
     }
 
     fn draw_screen_modedit_range(&mut self, draft: &ModSlot, slot: &SlotId) {
         self.draw_element_title(get_slot_position(1), slot.label(), 2);
 
         self.draw_element_range(get_slot_position(2), draft.min, draft.max);
-        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::arrow_up);
-        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::cross);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::ArrowUp);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::Cross);
 
         if draft.smooth {
             self.draw_element_value(get_slot_position(7), "SMO", "ON");
         } else {
             self.draw_element_value(get_slot_position(7), "SMO", "OFF");
         }
-        self.draw_element_icon(get_slot_position(8), "WAVE", IconSprite::wave);
+        self.draw_element_icon(get_slot_position(8), "RANG", IconSprite::Range);
+    }
+
+    fn draw_screen_modedit_noise(&mut self, draft: &ModSlot, slot: &SlotId) {
+        self.draw_element_title(get_slot_position(1), slot.label(), 2);
+
+        self.draw_element_number(get_slot_position(2), "FREQ", draft.noise_freq as u16);
+        self.draw_element_icon(get_slot_position(3), "UP", IconSprite::ArrowUp);
+        self.draw_element_icon(get_slot_position(4), "RES", IconSprite::Cross);
+
+        self.draw_element_number(get_slot_position(6), "SEED", draft.noise_seed as u16);
+        self.draw_element_icon(get_slot_position(8), "NOIS", IconSprite::Noise);
     }
 
     /// Draws a grid cell with bpm as text
     fn draw_element_bpm(&mut self, point: Point, bpm: f32) {
         let bpm_int = bpm.clamp(0.0, 999.0) as u16;
-        let buf = format_u16(bpm_int);
+        self.draw_element_number(point, "BPM", bpm_int);
+    }
+
+    /// Draws a grid cell with a runtime number and a label
+    fn draw_element_number(&mut self, point: Point, label: &'static str, value: u16) {
+        let buf = format_u16(value);
         let s = core::str::from_utf8(&buf.0[..buf.1]).unwrap_or("ERR");
 
         let text_style = TextStyleBuilder::new()
@@ -140,7 +157,7 @@ impl Display {
         .draw(&mut self.driver)
         .ok();
 
-        self.draw_element_outline_with_label(point, "BPM");
+        self.draw_element_outline_with_label(point, label);
     }
 
     /// Draws a grid cell with a text
@@ -254,7 +271,7 @@ impl Display {
         self.draw_sprite(
             Point::new(point.x + 10, point.y + 6),
             SpritesheetIndex::Index(index),
-            8,
+            9,
             11,
             11,
             ICONS_BMP,
@@ -347,7 +364,7 @@ impl Display {
         self.draw_sprite(
             position,
             SpritesheetIndex::Index(index),
-            5,
+            6,
             13,
             7,
             WAVESHAPES_BMP,

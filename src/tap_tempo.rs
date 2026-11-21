@@ -25,7 +25,7 @@ impl TapTempo {
     pub fn tap(&mut self) -> Option<u16> {
         let now = Instant::now();
         let result = if let Some(prev) = self.last_tap {
-            let interval_ms = now.duration_since(prev).as_millis() as u64;
+            let interval_ms = now.duration_since(prev).as_millis();
             if interval_ms < TIMEOUT_MS {
                 self.intervals[self.index] = interval_ms;
                 self.index = (self.index + 1) % BUFFER_SIZE;

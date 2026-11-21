@@ -2,6 +2,9 @@ use crate::input::InputEvent;
 use crate::modulator::{ModSlot, ModulatorConfig};
 use crate::phasor::GlobalSpeed;
 
+/// Upper bound for the NOI frequency (humps per cycle) when edited on the device.
+const MAX_NOISE_FREQ: u8 = 16;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum SlotId {
     A,
@@ -42,6 +45,7 @@ pub enum NavState {
     TapMode,
     ModEditWave { slot: SlotId, draft: ModSlot },
     ModEditRange { slot: SlotId, draft: ModSlot },
+    ModEditNoise { slot: SlotId, draft: ModSlot },
 }
 
 impl NavState {
@@ -143,6 +147,7 @@ impl NavState {
             (ModEditRange {slot, mut draft}, B3Press) => {
                 draft.min = 0.0;
                 draft.max = 1.0;
+                config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             },
             // Encoder Button 4 Press does nothing
@@ -151,7 +156,33 @@ impl NavState {
                 config.slots[slot.index()] = draft;
                 ModEditRange { slot, draft }
             },
-            (ModEditRange {slot, draft}, B6Press) => ModEditWave { slot, draft },
+            (ModEditRange {slot, draft}, B6Press) => ModEditNoise { slot, draft },
+
+            // ------------------------
+            // MODEDIT NOISE PAGE
+            // ------------------------
+            (ModEditNoise { slot, mut draft }, Enc1Rotate(delta)) => {
+                draft.noise_freq = (draft.noise_freq as i16 + delta as i16)
+                    .clamp(1, MAX_NOISE_FREQ as i16) as u8;
+                config.slots[slot.index()] = draft;
+                ModEditNoise { slot, draft }
+            }
+            (ModEditNoise { slot, mut draft }, Enc2Rotate(delta)) => {
+                draft.noise_seed = draft.noise_seed.wrapping_add_signed(delta);
+                config.slots[slot.index()] = draft;
+                ModEditNoise { slot, draft }
+            }
+            // Encoder Button 1 Press does nothing
+            (ModEditNoise {..}, B2Press) => Overview,
+            (ModEditNoise {slot, mut draft}, B3Press) => {
+                let defaults = ModSlot::default();
+                draft.noise_seed = defaults.noise_seed;
+                draft.noise_freq = defaults.noise_freq;
+                config.slots[slot.index()] = draft;
+                ModEditNoise { slot, draft }
+            },
+            // B5Press does nothing (changes commit live)
+            (ModEditNoise {slot, draft}, B6Press) => ModEditWave { slot, draft },
 
             (state, _) => state,
         }

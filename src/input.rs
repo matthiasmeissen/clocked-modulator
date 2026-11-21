@@ -32,6 +32,8 @@ impl defmt::Format for InputEvent {
     }
 }
 
+// One argument per pin: grouping them would only move the list elsewhere.
+#[allow(clippy::too_many_arguments)]
 pub fn init_encoder(
     spawner: embassy_executor::Spawner,
     e1_clk: Input<'static>,
