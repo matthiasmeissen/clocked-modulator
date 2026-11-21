@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clocked Modulator</title>
+<meta name="description" content="A small USB box that generates four tempo-synced LFOs and sends them to your computer as MIDI.">
+<style>
+  /* Self-hosted (SIL Open Font License), so no visitor request goes to Google */
+  @font-face {
+    font-family: "Instrument Sans";
+    src: url(fonts/instrument-sans.woff2) format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+  }
+
+  /* Colour, font and radius tokens mirror the Paper design file */
+  :root {
+    --background-primary: #fff;
+    --foreground-primary: #000;
+    --foreground-secondary: #494949;
+    --foreground-accent: #ff4233;
+    --border-primary: #000;
+    --border-secondary: #ababab;
+    --radius-lg: 12px;
+    --font-family-primary: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --gutter: 64px;
+    --rail: 296px;
+    --mono: Menlo, ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0 auto;
+    max-width: 1440px;
+    padding: 0 var(--gutter);
+    background: var(--background-primary);
+    color: var(--foreground-primary);
+    font: 400 16px/26px var(--font-family-primary);
+  }
+  a { color: inherit; text-underline-offset: 3px; }
+  a:hover { color: var(--foreground-accent); }
+  img { display: block; width: 100%; height: auto; }
+  code, th[scope="row"] { font: 13px/24px var(--mono); }
+
+  /* Small tracked uppercase text: top bar, footer, table titles, column heads */
+  .label, h3, thead th {
+    font: 400 12px/20px var(--font-family-primary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 32px;
+    min-height: 64px;
+    padding: 12px 0;
+  }
+  .bar a { text-decoration: none; }
+  .bar nav { display: flex; flex-wrap: wrap; gap: 8px 32px; }
+  header.bar { border-bottom: 1px solid var(--border-primary); }
+  header.bar strong { font-weight: 500; }
+  footer.bar { border-top: 1px solid var(--border-primary); color: var(--foreground-secondary); }
+  .mute { color: var(--foreground-secondary); }
+
+  /* Every block shares one grid: a narrow left rail and the content column */
+  .hero, main > section {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    column-gap: var(--gutter);
+  }
+  .hero { align-items: end; padding: 96px 0 64px; }
+  .hero .label { margin: 0; color: var(--foreground-secondary); }
+  h1 {
+    margin: 0 0 32px;
+    font: 400 clamp(44px, 8vw, 72px)/1 var(--font-family-primary);
+    letter-spacing: -0.03em;
+  }
+  .lead { margin: 0; max-width: 560px; font-size: 20px; line-height: 30px; }
+
+  main > section { padding: 96px 0; scroll-margin-top: 0; }
+  main > section + section { border-top: 1px solid var(--border-secondary); }
+  .num { display: block; margin-bottom: 8px; color: var(--foreground-accent); font: 12px/16px var(--mono); }
+  h2 {
+    margin: 0 0 32px;
+    font: 400 28px/32px var(--font-family-primary);
+    letter-spacing: -0.01em;
+  }
+  .content > :first-child { margin-top: 0; }
+  .content > :last-child { margin-bottom: 0; }
+  .content p, .content ul { max-width: 640px; margin: 0 0 24px; }
+  .content ul { padding-left: 20px; }
+  .content li { margin-bottom: 8px; }
+  .photo { border-radius: var(--radius-lg); }
+
+  .panel { display: block; width: 100%; height: auto; margin: 40px 0; }
+
+  h3 { margin: 64px 0 8px; font-weight: 500; }
+  h3 + p { color: var(--foreground-secondary); margin-bottom: 16px; }
+
+  table { width: 100%; margin: 16px 0 24px; border-collapse: collapse; border-top: 1px solid var(--border-primary); }
+  th, td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--border-secondary); text-align: left; vertical-align: top; }
+  th[scope="row"] { width: 160px; font-weight: 400; }
+  thead th { font-weight: 400; color: var(--foreground-secondary); }
+  td { line-height: 24px; }
+
+  /* Control icons: outlined by default, a row's on-* classes fill the controls it talks about */
+  .pad-cell { width: 68px; padding-block: 12px; }
+  .pad { display: block; width: 44px; height: 28px; stroke: var(--border-primary); stroke-width: 1;
+         --e1: var(--background-primary); --e2: var(--background-primary); --b2: var(--background-primary);
+         --b3: var(--background-primary); --b5: var(--background-primary); --b6: var(--background-primary); }
+  .on-e1 { --e1: var(--foreground-primary); }
+  .on-e2 { --e2: var(--foreground-primary); }
+  .on-b2 { --b2: var(--foreground-primary); }
+  .on-b3 { --b3: var(--foreground-primary); }
+  .on-b5 { --b5: var(--foreground-primary); }
+  .on-b6 { --b6: var(--foreground-primary); }
+
+  @media (max-width: 800px) {
+    :root { --gutter: 20px; }
+    .hero, main > section { grid-template-columns: minmax(0, 1fr); }
+    .hero { padding: 56px 0 40px; }
+    .hero .label { order: 2; margin-top: 32px; }
+    main > section { padding: 56px 0; }
+    th[scope="row"] { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Control cluster icon (from the Paper icon artboards): two encoders on the left, four keys on the right.
+     Defined once; each table row reuses it and fills in its own controls through the on-* classes. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="pad" viewBox="0 0 66 42">
+    <circle style="fill:var(--e1)" cx="9" cy="9" r="8.5"/>
+    <rect style="fill:var(--b2)" x="24.5" y="0.5" width="17" height="17" rx="1.5"/>
+    <rect style="fill:var(--b3)" x="48.5" y="0.5" width="17" height="17" rx="1.5"/>
+    <circle style="fill:var(--e2)" cx="9" cy="33" r="8.5"/>
+    <rect style="fill:var(--b5)" x="24.5" y="24.5" width="17" height="17" rx="1.5"/>
+    <rect style="fill:var(--b6)" x="48.5" y="24.5" width="17" height="17" rx="1.5"/>
+  </symbol>
+</svg>
+
+<header class="bar label">
+  <strong>Clocked Modulator</strong>
+  <nav aria-label="Sections">
+    <a href="#using-it">Using it</a>
+    <a href="#midi-output">MIDI output</a>
+    <a href="#building-one">Building one</a>
+    <a class="mute" href="https://github.com/matthiasmeissen/clocked-modulator">GitHub ↗</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <p class="label">User guide<br>4 × LFO · USB MIDI</p>
+  <div>
+    <h1>clocked<br>modulator</h1>
+    <p class="lead">A small USB box that generates four tempo-synced LFOs and sends them to your
+    computer as MIDI. Source, PCB and enclosure files are on
+    <a href="https://github.com/matthiasmeissen/clocked-modulator">GitHub</a>.</p>
+  </div>
+</div>
+
+<img class="photo" src="img/clocked-modulator.webp" width="2000" height="1113" alt="The Clocked Modulator: an aluminium box with a small display, four LEDs, two encoders and four keys">
+
+<!-- TODO: short demo clip -->
+
+<main>
+
+<section id="using-it">
+  <div>
+    <span class="num">01</span>
+    <h2>using it</h2>
+  </div>
+  <div class="content">
+    <p>The device has a display, two encoders (ENC1, ENC2), six buttons (B1 to B6) and
+    four LEDs that show the four outputs, called slots A, B, C and D. B1 and B4 are
+    the push switches of ENC1 and ENC2; the other four are the keys.</p>
+
+    <img class="panel" src="img/panel.svg" width="1200" height="525" alt="Front panel: logo on the left, four LEDs above the display, encoders ENC1 (B1) and ENC2 (B4) in the middle, keys B2 and B3 above B5 and B6 on the right">
+
+    <h3>Overview</h3>
+    <p>This is the page shown after power-on. The clock starts at 120 BPM.</p>
+    <table>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Global speed: /4, /2, x1, x2, x4</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B1</th><td>Open the tempo page</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b2 on-b3 on-b5 on-b6" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B2, B3, B5, B6</th><td>Edit slot A, B, C, D</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B4</th><td>Set global speed back to x1</td></tr>
+    </table>
+
+    <h3>Tempo page</h3>
+    <table>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Tempo, 20 to 300 BPM</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Tap tempo. Tap at least four times, less than two seconds apart</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B4</th><td>Set tempo back to 120 BPM</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Pause</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b6" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B6</th><td>Resume when paused, restart the bar when playing</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B2</th><td>Back to Overview</td></tr>
+    </table>
+
+    <h3>Editing a slot</h3>
+    <p>Each slot has three pages. B6 moves to the next page (Wave, Range, Noise, then
+    Wave again) and B2 goes back to Overview.</p>
+
+    <h3>Wave</h3>
+    <table>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Waveform: SIN, TRI, SQU, SAW, CON (constant), NOI (noise)</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Cycle length: /8, /4, /2 (8, 4, 2 bars), x1 (1 bar), x2 (2 beats), x4 (1 beat)</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set waveform and cycle length back to SAW and x1</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Apply. Changes on this page take effect only when you press B5</td></tr>
+    </table>
+
+    <h3>Range</h3>
+    <table>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Minimum output value</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Maximum output value</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set the range back to full</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b5" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B5</th><td>Smoothing on or off</td></tr>
+    </table>
+
+    <h3>Noise</h3>
+    <p>Affects the NOI waveform only.</p>
+    <table>
+      <tr><td class="pad-cell"><svg class="pad on-e1" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC1</th><td>Frequency, 1 to 16 humps per cycle</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-e2" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">ENC2</th><td>Seed, which selects a different noise pattern</td></tr>
+      <tr><td class="pad-cell"><svg class="pad on-b3" aria-hidden="true"><use href="#pad"/></svg></td><th scope="row">B3</th><td>Set frequency and seed back to their defaults</td></tr>
+    </table>
+
+    <p>Changes on the Range and Noise pages take effect immediately. The noise pattern
+    repeats exactly every cycle, so it stays in sync with the clock. Settings are
+    not saved; the device starts with its defaults each time it is powered on.</p>
+  </div>
+</section>
+
+<section id="midi-output">
+  <div>
+    <span class="num">02</span>
+    <h2>midi output</h2>
+  </div>
+  <div class="content">
+    <p>The device appears as a USB MIDI device named "Clocked Modulator". No driver is
+    needed. Each slot is sent as a 14-bit control change on channel 1, about 125
+    times per second:</p>
+    <table>
+      <thead>
+        <tr><th scope="col">Slot</th><th scope="col">MSB (coarse)</th><th scope="col">LSB (fine)</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">A</th><td><code>CC 0</code></td><td><code>CC 32</code></td></tr>
+        <tr><th scope="row">B</th><td><code>CC 1</code></td><td><code>CC 33</code></td></tr>
+        <tr><th scope="row">C</th><td><code>CC 2</code></td><td><code>CC 34</code></td></tr>
+        <tr><th scope="row">D</th><td><code>CC 3</code></td><td><code>CC 35</code></td></tr>
+      </tbody>
+    </table>
+    <p>Hosts that only read 7-bit CCs can use CC 0 to 3 and ignore the rest. For the
+    full resolution, combine the pair as <code>(MSB * 128 + LSB) / 16383</code>.</p>
+  </div>
+</section>
+
+<section id="building-one">
+  <div>
+    <span class="num">03</span>
+    <h2>building one</h2>
+  </div>
+  <div class="content">
+    <h3>Parts</h3>
+    <ul>
+      <li>Bought parts: everything is in the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/bom.csv">BOM</a>, with suppliers and links</li>
+      <li>The PCB: order it with the <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/gerbers.zip">Gerber files</a></li>
+      <li>Printed parts: the case, cover and encoder knobs in <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/enclosure">enclosure/</a></li>
+    </ul>
+    <p>The <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf">schematic</a> shows how everything connects.</p>
+
+    <h3>Assembly</h3>
+    <!-- TODO: assembly order, and the sizes of the inserts, spacers and screws -->
+    <ul>
+      <li>Check the pin order of the display before soldering. It must be
+      VCC-GND-SCL-SDA; modules with VCC and GND swapped exist and will not work.</li>
+      <li>Install the firmware before closing the case. The BOOTSEL button cannot be
+      reached once the Pico is inside.</li>
+      <li>The case takes threaded inserts. The cover rests on 1 cm spacers and is
+      screwed into the inserts.</li>
+    </ul>
+
+    <h3>Firmware</h3>
+    <p>Download <code>clocked-modulator.uf2</code> from the
+    <a href="https://github.com/matthiasmeissen/clocked-modulator/releases/latest">latest release</a>.
+    Do this before closing the case. Hold the BOOTSEL button on the Pico 2 while plugging it in, then drag the file
+    onto the <code>RP2350</code> drive that appears. The Pico restarts on its own.</p>
+    <p>To build from source instead, see the
+    <a href="https://github.com/matthiasmeissen/clocked-modulator/tree/main/firmware">firmware folder</a>.</p>
+
+    <h3>First power-on</h3>
+    <!-- TODO: confirm the below against a freshly flashed device and add a photo -->
+    <p>The display shows the Overview page at 120 BPM, the LED for slot A fades up
+    once per bar, and the LEDs for slots B, C and D are fully lit. The computer
+    lists a MIDI device named "Clocked Modulator".</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="bar label">
+  <span>Clocked Modulator</span>
+  <a href="https://github.com/matthiasmeissen/clocked-modulator">Source on GitHub ↗</a>
+</footer>
+
+</body>
+</html>
