@@ -7,3 +7,6 @@ No.,Qty,Ref,Part,Spec,Supplier,Link
 6,4,LED1-LED4,"LED, 5 mm, red","Through-hole, 2.54 mm pitch",Any,
 7,4,R1-R4,"Resistor, 220 Ohm","Axial through-hole, 1/4 W",Any,
 8,2,,Encoder knob,"3D printed, for 6 mm flatted shaft",See enclosure/,
+9,4,,"Threaded insert, M2.5","Heat-set, brass, for the case",Amazon,https://www.amazon.de/dp/B088QJDPKK
+10,4,,"Spacer, M2.5, 10 mm","Brass, male-female. From a 120-piece assortment",BerryBase,https://www.berrybase.de/120-teiliges-messing-abstandshalter-sortiment-in-kunststoffbox-groesse-m2-5
+11,4,,"Screw, M2.5",For the cover. Included in the spacer assortment,BerryBase,https://www.berrybase.de/120-teiliges-messing-abstandshalter-sortiment-in-kunststoffbox-groesse-m2-5

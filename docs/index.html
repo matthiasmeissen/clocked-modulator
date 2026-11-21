@@ -136,6 +136,7 @@
     <a href="#using-it">Using it</a>
     <a href="#midi-output">MIDI output</a>
     <a href="#building-one">Building one</a>
+    <a href="#build-log">Build log</a>
     <a href="https://github.com/matthiasmeissen/clocked-modulator" target="_blank" rel="noopener">GitHub ↗</a>
   </nav>
 </header>
@@ -253,7 +254,6 @@
     <p>The <a href="https://github.com/matthiasmeissen/clocked-modulator/blob/main/hardware/fab/schematic.pdf" target="_blank" rel="noopener">schematic</a> shows how everything connects.</p>
 
     <h3>Assembly</h3>
-    <!-- TODO: confirm the screw and insert size (probably M2.5) and add it here and to the BOM -->
     <ol>
       <li>Check the pin order of the display. It must be VCC-GND-SCL-SDA; modules
       with VCC and GND swapped exist and will not work.</li>
@@ -261,7 +261,7 @@
       The Pico 2 is soldered directly to the PCB, without a socket, to keep the enclosure low.</li>
       <li>Install the firmware (see below) and test the device. The BOOTSEL button
       cannot be reached once the Pico is inside the case.</li>
-      <li>Print the case and set the threaded inserts into its bottom holes. The
+      <li>Print the case and set the four M2.5 threaded inserts into its bottom holes. The
       STEP files were made for CNC milling, so enlarge these holes to fit your inserts.</li>
       <li>Place the PCB in the case and thread the 1 cm spacers into the inserts; they clamp the board.</li>
       <li>Lay the cover on the spacers and screw it into them.</li>
@@ -279,6 +279,23 @@
     <p>The display shows the Overview page at 120 BPM, the LED for slot A fades up
     once per bar, and the LEDs for slots B, C and D are fully lit. The computer
     lists a MIDI device named "Clocked Modulator".</p>
+  </div>
+</section>
+
+<section id="build-log">
+  <h2>build log</h2>
+  <div class="content">
+    <p>How the project came together, written up in eight posts.</p>
+    <ol>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-1-controller" target="_blank" rel="noopener">Controller Setup and Software Prototype</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-2-connecting" target="_blank" rel="noopener">Connecting an OLED Screen and switching to Embassy</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-3-rethinking" target="_blank" rel="noopener">Rethinking the Interface Layout</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-4-breadboard" target="_blank" rel="noopener">Breadboard Prototype and Grid-Based UI</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-5-tap" target="_blank" rel="noopener">Tap Tempo, Playback Controls, MIDI and LEDs</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-6-performance" target="_blank" rel="noopener">Performance Improvements and New UI</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-7-pcb" target="_blank" rel="noopener">PCB and Case</a></li>
+      <li><a href="https://matthiasmeissen.substack.com/p/building-a-clocked-modulator-8-cnc" target="_blank" rel="noopener">CNC Milled Aluminium Case</a></li>
+    </ol>
   </div>
 </section>
 
