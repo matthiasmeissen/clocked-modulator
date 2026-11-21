@@ -93,7 +93,7 @@ Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383)
 
 ## Roadmap (v2 UI)
 
-See `docs/modulator_state_ui_guide_v2.md` for the full spec.
+See `docs/modulator_state_ui_guide.md` for the full spec.
 
 Done since the v2 spec was written:
 - ENC2 in nav: cycles multiplier on the Wave page, adjusts max on the Range page; on Overview it cycles `GlobalSpeed`

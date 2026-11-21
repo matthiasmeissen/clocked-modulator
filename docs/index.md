@@ -1,6 +1,6 @@
 # Clocked Modulator
 
-<!-- TODO: hero photo, e.g. ![Clocked Modulator](img/hero.jpg) -->
+![Clocked Modulator](img/clocked-modulator.webp)
 
 A small USB box that generates four tempo-synced LFOs and sends them to your
 computer as MIDI. Source, PCB and enclosure files are on
@@ -17,7 +17,7 @@ computer as MIDI. Source, PCB and enclosure files are on
 The device has a display, two encoders (ENC1, ENC2), six buttons (B1 to B6) and
 four LEDs that show the four outputs, called slots A, B, C and D.
 
-![Interface overview](clocked_modulator_interface_v2.svg)
+![Interface overview](clocked_modulator_interface.svg)
 
 ### Overview
 
