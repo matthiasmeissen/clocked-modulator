@@ -1,21 +1,22 @@
 # Clocked Modulator
 
-A clocked modulation source build on embedded hardware.
+![Clocked Modulator](docs/img/clocked-modulator.webp)
 
-## How to build
+four lfos, one clock.  
+a small usb box for tempo-synced modulation. each output has its own waveform, cycle length and range. set the tempo by encoder or tap. sends 14-bit midi cc to touchdesigner or any midi host, no driver needed.  
+built on raspberry pi pico 2. written in rust.
 
-Connect the pico 2 and the debug probe to your machine.
-Then use `cargo run --release` to build.
+**[Manual and build guide](https://matthiasmeissen.github.io/clocked-modulator/)**
 
-## How to connect debug
-Using female pin cable, orient usb to left.
-Pins on the right, colors top to bottom: yellow(dta), black(gnd), orange(clk).
+## What is in this repo
 
-## Ressources
+- [Firmware](firmware/) Rust firmware (Cargo project)
+- [Hardware](hardware/) PCB source files and fabrication outputs
+- [Enclosure](enclosure/) Printable and editable enclosure files
+- [Docs](docs/) The manual (also the website)
+- [Specs](specs/) Design notes for the UI and the display driver
 
-- [Pico 2 Book](https://pico.implrust.com/index.html)
-- [rp-235x template](https://github.com/rp-rs/rp235x-project-template/tree/main)
-- [pico 2 template](https://github.com/ImplFerris/pico2-template/tree/main)
-- [rp235x hal examples](https://github.com/rp-rs/rp-hal/tree/main/rp235x-hal-examples)
-- [embassy rp235x examples](https://github.com/embassy-rs/embassy/tree/main/examples/rp235x)
-- [Pico 2 Pinout](https://www.raspberrypi.com/documentation/microcontrollers/images/pico-2-r4-pinout.svg)
+## License
+
+Everything in this repo is licensed under [CC BY-NC-SA 4.0](LICENSE): build and
+modify it for yourself, give credit, share changes under the same terms. Commercial use is not allowed.

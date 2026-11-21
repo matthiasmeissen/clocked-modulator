@@ -1,4 +1,4 @@
-[target.thumbv8m.main-none-eabihf]
+[target."thumbv8m.main-none-eabihf"]
 # Use the probe-rs runner and 'cargo embed' when connected with the debug probe
 runner = "probe-rs run --chip RP235x --protocol swd"
 # Use picotool and 'cargo run' when connected in boot mode (Hold bootsel while connecting)

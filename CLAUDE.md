@@ -17,11 +17,13 @@ This is a learning project. The goal is to practice software craftsmanship in em
 
 ## Build and Run
 
+The Cargo project lives in `firmware/`. Run all cargo commands from there (Cargo reads `firmware/.cargo/config.toml` from the working directory). `hardware/` and `enclosure/` hold the PCB and case files; `docs/index.html` is the manual, a hand-written static page served by GitHub Pages.
+
 - Target: `thumbv8m.main-none-eabihf` (Cortex-M33, hard float)
 - Build: `cargo build`
 - Flash via debug probe: `cargo run --release` (uses `probe-rs run --chip RP235x --protocol swd`)
-- Flash via bootsel: switch runner in `.cargo/config.toml` to `picotool`
-- Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `.cargo/config.toml`
+- Flash via bootsel: switch runner in `firmware/.cargo/config.toml` to `picotool`
+- Logging: `defmt` over RTT, log level set via `DEFMT_LOG=debug` in `firmware/.cargo/config.toml`
 
 ## Dependency and Security Rules
 
@@ -91,7 +93,7 @@ Each of the 4 outputs (0.0–1.0) becomes a **14-bit MIDI CC** value (0–16383)
 
 ## Roadmap (v2 UI)
 
-See `docs/modulator_state_ui_guide_v2.md` for the full spec.
+See `specs/modulator_state_ui_guide.md` for the full spec.
 
 Done since the v2 spec was written:
 - ENC2 in nav: cycles multiplier on the Wave page, adjusts max on the Range page; on Overview it cycles `GlobalSpeed`
